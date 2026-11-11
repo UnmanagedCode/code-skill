@@ -1,0 +1,19 @@
+{
+  "name": "code-skill",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Code Skill — inventory, usage analytics and safe authoring of Claude Code skills, as a code-conductor UI plugin",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "start": "node server.js",
+    "test": "node tests/run.mjs",
+    "harness": "node harness/playwright/golden-path.mjs"
+  },
+  "dependencies": {
+    "express": "^4.22.2",
+    "yaml": "^2.8.0"
+  }
+}
