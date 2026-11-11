@@ -2,7 +2,7 @@
 
 > See also: [README](../README.md) · [features](features.md) · [architecture](architecture.md)
 
-All routes are under `/api`, JSON in and out. Refusals answer `{ ok: false, code, message, ...extra }` with the status shown. Write routes take `{scope, project?, name}` — never a path or an id. `scope` outside `user` / `project` → **403 `READ_ONLY_SOURCE`**.
+All routes are under `/api`, JSON in and out. Refusals answer `{ ok: false, code, message, ...extra }` with the status shown. Write routes take `{scope, project?, name}` — never a path or an id. `scope` outside `user` / `project` → **403 `READ_ONLY_SOURCE`**; `PUT skills/enabled` also accepts `synced` (it ignores `project`).
 
 ## Routes
 
@@ -14,7 +14,7 @@ All routes are under `/api`, JSON in and out. Refusals answer `{ ok: false, code
 | POST `skills/validate` | `{dirName, frontmatterText, body}` | `{ok, errors[], description, whenToUse, cost}` | 400 `BAD_REQUEST` |
 | POST `skills` | `{scope, project?, name, description, body}` | 201 `{id, etag, git, skill}` | 400 `INVALID_NAME`, `RESERVED_NAME`, `INVALID_FRONTMATTER`, `PATH_ESCAPE`, `SYMLINK_REFUSED`, `PROJECT_NOT_LOCAL`, `BAD_REQUEST`; 404 `UNKNOWN_PROJECT`; 409 `EXISTS`, `SKILLS_DIR_UNUSABLE` (the skills folder is a dangling symlink or a file). Input checks run before any folder is made. |
 | PUT `skills/content` | `{scope, project?, name, frontmatterText, body, baseEtag}` | `{id, etag, git, skill}` | as above, plus 404 `NOT_FOUND`, 409 `STALE`; `INVALID_FRONTMATTER` carries `errors[]` |
-| PUT `skills/enabled` | `{scope, project?, name, enabled}` (`name` = folder name) | `{override, git}` | 409 `POLICY_LOCKED`, `NAME_MISMATCH` (frontmatter `name` ≠ folder), `SETTINGS_UNPARSEABLE` (message names the file only), `SETTINGS_SHAPE`, `SETTINGS_BUSY`, `SYMLINK_REFUSED` (the settings file is a symlink; the message says what to edit by hand); 400 `SYMLINK_REFUSED` (the skill folder or its `SKILL.md` is a symlink), `INVALID_NAME`, `RESERVED_NAME`, `PATH_ESCAPE`, `PROJECT_NOT_LOCAL`, `BAD_REQUEST`; 404 `NOT_FOUND`, `UNKNOWN_PROJECT` |
+| PUT `skills/enabled` | `{scope, project?, name, enabled}` (`name` = folder name; `scope` `user`, `project` or `synced`; a synced skill is addressed by its folder in the signed-in account's bucket and answers `git: null`) | `{override, git}` | 409 `POLICY_LOCKED`, `NAME_MISMATCH` (frontmatter `name` ≠ folder), `SETTINGS_UNPARSEABLE` (message names the file only), `SETTINGS_SHAPE`, `SETTINGS_BUSY`, `SYMLINK_REFUSED` (the settings file is a symlink; the message says what to edit by hand); 400 `SYMLINK_REFUSED` (the skill folder or its `SKILL.md` is a symlink), `INVALID_NAME`, `RESERVED_NAME`, `PATH_ESCAPE`, `PROJECT_NOT_LOCAL`, `BAD_REQUEST`; 404 `NOT_FOUND`, `UNKNOWN_PROJECT` |
 | POST `skills/delete` | `{scope, project?, name}` | `{trashId, git}` | 404 `NOT_FOUND`, `UNKNOWN_PROJECT`; 400 `SYMLINK_REFUSED` (the skill folder or its `SKILL.md` is a symlink), `INVALID_NAME`, `RESERVED_NAME`, `PATH_ESCAPE`, `PROJECT_NOT_LOCAL` |
 | GET `trash` | – | `{entries: TrashMeta[]}` newest first; entries that could never restore are left out | – |
 | POST `trash/:trashId/restore` | – (`trashId` must match `^\d+-[0-9a-f]{8}$`) | `{id, git, skill}` | 404 `NOT_FOUND` (unknown entry, or one that can't restore: malformed, an invalid or reserved name, a read-only scope); 400 `SYMLINK_REFUSED` (a symlink in the entry, or the entry changed during the restore); 409 `RESTORE_CONFLICT`, `SKILLS_DIR_UNUSABLE`; 404 `UNKNOWN_PROJECT`; 400 `PROJECT_NOT_LOCAL`, `PATH_ESCAPE`, `SYMLINK_REFUSED` (target side) |
@@ -36,18 +36,19 @@ type SkillRecord = {
   source: Source;
   owner: { label: string; project?: string; plugin?: string; namespace?: string; scope?: string /* host-plugin */ };
   writable: boolean;                               // true exactly for user and project
-  toggleable: boolean;                             // writable, and frontmatter name absent or equal to dirName
+  toggleable: boolean;                             // source user, project or synced, and frontmatter name absent or equal to dirName
   dirName: string; name: string | null;            // frontmatter name
   invokeName: string;                              // skillName = name || dirName; namespace ? `${namespace}:${skillName}` : skillName
   namespace: string | null;
   path: string;                                    // absolute SKILL.md path (display only)
   description: string; whenToUse: string | null;
   disableModelInvocation: boolean; userInvocable: boolean;
-  override: null | {                               // set for every writable record; keyed on skillName, like the CLI
+  override: null | {                               // set for user, project and synced records. Keys: skillName; a synced skill also
+                                                   // `anthropic-skills:<skillName>` (primary, wins) and the bare name (alias)
     effective: 'on'|'name-only'|'user-invocable-only'|'off';
-    layers: { layer: 'user'|'project'|'local'|'policy'; file: string; value: string }[];
+    layers: { layer: 'user'|'project'|'local'|'policy'; file: string; key: string; value: string }[];
     lockedByPolicy: boolean;
-    otherProjects?: { project: string; layer: 'project'|'local'; value: string }[];   // user skills only
+    otherProjects?: { project: string; layer: 'project'|'local'; key: string; value: string }[];   // user and synced skills only
   };
   cost: { listing: 'full'|'name-only'|'hidden'; chars: number; tokens: number; truncated: boolean };
   enabled?: boolean;                               // host-plugin only

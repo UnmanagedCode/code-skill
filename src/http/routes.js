@@ -6,7 +6,7 @@ import { parseSkillMd, validateFrontmatter, skillFields } from '../skillFile.js'
 import { costOf } from '../../shared/cost.js';
 import { sha256 } from '../fsx/atomicWrite.js';
 import { refuse } from '../safety/errors.js';
-import { assertWritableScope } from '../safety/resolve.js';
+import { assertWritableScope, assertToggleScope } from '../safety/resolve.js';
 import { createSkill, updateSkill, setEnabled, deleteSkill, restoreSkill, readSkillBytes } from '../authoring.js';
 import { listTrash } from '../trash.js';
 
@@ -36,6 +36,11 @@ export function buildRoutes(deps) {
   const body = (req) => (req.body && typeof req.body === 'object' && !Array.isArray(req.body) ? req.body : refuse('BAD_REQUEST', 400, 'expected a JSON object body'));
   const target = (b) => {
     assertWritableScope(b.scope);
+    return { scope: b.scope, project: b.scope === 'project' ? b.project : undefined, name: b.name };
+  };
+
+  const toggleTarget = (b) => {
+    assertToggleScope(b.scope);
     return { scope: b.scope, project: b.scope === 'project' ? b.project : undefined, name: b.name };
   };
 
@@ -73,7 +78,7 @@ export function buildRoutes(deps) {
 
   r.put('/skills/enabled', wrap(async (req, res) => {
     const b = body(req);
-    res.json(await setEnabled(deps, { ...target(b), enabled: b.enabled }));
+    res.json(await setEnabled(deps, { ...toggleTarget(b), enabled: b.enabled }));
   }));
 
   r.post('/skills/delete', wrap(async (req, res) => {

@@ -4,7 +4,7 @@ A code-conductor (cc) plugin that shows every Claude Code skill your cc sessions
 
 - **Inventory** — every skill source (yours, projects', claude.ai-synced, installed Claude Code plugins, cc core, cc plugins, convention skills) with its owner, listing cost, duplicate and near-duplicate flags, and the listing budget for each context size in use.
 - **Usage** — Skill tool calls counted from session transcripts: most used, never fired, invoked but no longer installed.
-- **Authoring** — create, edit, enable/disable and delete (to a restorable trash) your own `~/.claude/skills` skills and your projects' `.claude/skills` skills. Everything else is read-only.
+- **Authoring** — create, edit, enable/disable and delete (to a restorable trash) your own `~/.claude/skills` skills and your projects' `.claude/skills` skills. Enable/disable also covers claude.ai-synced skills (content stays read-only). Everything else is read-only.
 
 UI-only plugin: an Express backend plus a no-build vanilla-JS page. No MCP tools.
 
@@ -38,7 +38,7 @@ CONDUCTOR_PLUGIN_DATA_DIR=/tmp/code-skill-data CONDUCTOR_URL=http://127.0.0.1:87
 
 1. `~/.claude/skills/<name>/SKILL.md`, and moving `~/.claude/skills/<name>/` to and from the trash.
 2. `<project main checkout>/.claude/skills/<name>/SKILL.md`, and moving that folder to and from the trash.
-3. Exactly the `skillOverrides.<name>` key of `~/.claude/settings.json` (your skills) or `<project>/.claude/settings.local.json` (project skills).
+3. Exactly the `skillOverrides.<name>` key of `~/.claude/settings.json` (your skills), `skillOverrides["anthropic-skills:<name>"]` of `~/.claude/settings.json` (synced skills) or `<project>/.claude/settings.local.json` (project skills).
 4. Anything under its data dir.
 
 Writes are atomic and keep the existing file's permission bits. Project writes change the project's main checkout; the UI warns when `git status` then reports the path, because cc refuses worktree merges into a dirty main checkout. Write-safety rules: [docs/architecture.md](docs/architecture.md#write-safety).
@@ -54,7 +54,9 @@ Writes are atomic and keep the existing file's permission bits. Project writes c
 - Skills built into the Claude Code binary are not inventoried.
 - Nested `<subdir>/.claude/skills`, `--add-dir` directories and legacy `.claude/commands` are not covered.
 - Project skills are read from and written to main checkouts only, not worktrees.
-- Plugin skills (cc core, cc plugins, conventions, installed plugins) can't be toggled: the CLI ignores `skillOverrides` for them. claude.ai-synced skills are read-only by Code Skill's choice (the CLI does honour `skillOverrides` for them).
+- Plugin skills (cc core, cc plugins, conventions, installed plugins) can't be toggled: the CLI ignores `skillOverrides` for them. claude.ai-synced skills can be toggled but not edited or deleted.
+- `"syncClaudeAiSkills": false` hides every synced skill from sessions, but Code Skill still lists them with their own state.
+- A synced skill's bare-name override is treated as reserved only when a user skill has the same name; the CLI also reserves built-in command names and, inside a project's sessions, that project's skill names.
 - A skill whose frontmatter `name` differs from its folder name can't be toggled until they match.
 - A `settings.json` / `settings.local.json` that is itself a symlink is read through but never written (an atomic replace would replace the link); toggles answer `SYMLINK_REFUSED` with what to edit by hand. A symlinked `~/.claude` folder is fine.
 - Skills invoked by typing `/name` are not counted; only Skill tool calls are.

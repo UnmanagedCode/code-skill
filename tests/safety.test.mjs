@@ -59,7 +59,7 @@ for (const scope of ['cc-core', 'cc-plugin', 'convention', 'synced', 'host-plugi
       ['PUT', '/api/skills/content', { frontmatterText: 'description: d', body: '', baseEtag: 'x' }],
       ['PUT', '/api/skills/enabled', { enabled: false }],
       ['POST', '/api/skills/delete', {}],
-    ]) {
+    ].filter(([, route]) => !(scope === 'synced' && route === '/api/skills/enabled'))) {
       const res = await app.json(method, route, { scope, name: 'core', ...extra });
       assert.equal(res.status, 403, `${method} ${route}`);
       assert.equal(res.body.code, 'READ_ONLY_SOURCE');

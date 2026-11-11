@@ -161,6 +161,25 @@ try {
     await page.getByText('commit-msg enabled.').waitFor();
     assert.equal((await readJson('home/.claude/settings.json')).skillOverrides['commit-msg'], undefined);
 
+    // 6b. A claude.ai-synced skill gets the same switch: its namespaced key goes to user settings.
+    const syncedId = 'synced:~:skill-creator';
+    const syncedKey = 'anthropic-skills:skill-creator';
+    await row(page, syncedId).getByRole('switch').uncheck();
+    await page.getByText(`${syncedKey} disabled.`).waitFor();
+    const afterOff = await readJson('home/.claude/settings.json');
+    assert.equal(afterOff.skillOverrides[syncedKey], 'off');
+    assert.equal(afterOff.model, 'opus', 'other keys kept');
+    await row(page, syncedId).getByText('not listed').waitFor();
+    await shot(page, '06b-synced-disabled', true);
+    await openSkill(page, syncedId);
+    await pane(page).getByRole('button', { name: 'Enable' }).waitFor();
+    assert.equal(await pane(page).getByRole('textbox', { name: 'Frontmatter (YAML)' }).count(), 0, 'synced content is not editable');
+    await shot(page, '06c-synced-pane');
+    await pane(page).getByRole('button', { name: 'Enable' }).click();
+    await page.getByText(`${syncedKey} enabled.`).waitFor();
+    assert.equal((await readJson('home/.claude/settings.json')).skillOverrides[syncedKey], undefined);
+    await pane(page).getByRole('button', { name: 'Close' }).click();
+
     // 7. Delete via the in-page dialog, then restore from Trash.
     await openSkill(page, 'user:~:commit-msg');
     await pane(page).getByRole('button', { name: 'Delete' }).click();
