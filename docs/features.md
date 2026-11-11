@@ -54,6 +54,7 @@ Deleted skills with where they came from and when; **Restore** puts the folder b
 - Enable removes that key; if a lower layer (e.g. your user settings, for a project skill) still turns it off, it writes `"on"` instead.
 - Managed policy (`managed-settings.json`, `managed-settings.d/*.json`, `remote-settings.json`) wins and can't be changed here.
 - `name-only` and `user-invocable-only` values (set via `/skills`) are shown, not offered.
+- A successful toggle shows no success notice: the switch or button state and the row's state update. Running sessions pick the change up when Claude Code reloads settings; new sessions always get it. A project toggle that leaves the main checkout dirty shows the [dirty-tree warning](#dirty-tree-warning) alone.
 - Settings files that are symlinks are read through (as the CLI does). Toggling one is refused with an explanation of what to edit by hand, because the atomic write would replace the link. A symlinked `~/.claude` folder works normally.
 
 ## Pickup notices
@@ -62,7 +63,6 @@ Deleted skills with where they came from and when; **Restore** puts the folder b
 |---|---|
 | Your / project skill created, edited, deleted | Running sessions within seconds (Claude Code watches skill folders); if the skills folder didn't exist when a session started, only new sessions. |
 | Project skill write | Lands in the main checkout, uncommitted; worktree sessions see it after it's merged into their branch. |
-| Enable / disable | Running sessions when Claude Code reloads settings; new sessions always. |
 | cc core / cc plugin skills | Fixed per session at creation; new sessions get changes. |
 | Convention skills | Regenerated at each session launch. |
 

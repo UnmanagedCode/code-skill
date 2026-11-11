@@ -14,8 +14,6 @@ export function pickupNotice(skill) {
   }
 }
 
-export const TOGGLE_NOTICE = 'Claude Code reloads settings in running sessions; new sessions always get it.';
-
 export const projectWriteNotice = (project) => `Written to the main checkout of ${project} (uncommitted). Worktree sessions see it once it's merged into their branch.`;
 
 // The warning after a project write left the main checkout dirty; null when it didn't.
