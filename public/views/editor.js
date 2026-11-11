@@ -10,6 +10,7 @@ import { notice, pickupNotice, gitNotice, projectWriteNotice, TOGGLE_NOTICE } fr
 import { scopeOf, usageMap } from './inventory.js';
 import { confirmDialog } from './confirm.js';
 import { restore } from './trash.js';
+import { descriptionBlock } from './description.js';
 
 const VALIDATE_DEBOUNCE_MS = 400;
 const EVALS_SKILL = 'anthropic-skills:skill-creator';
@@ -75,6 +76,7 @@ function readOnlyView(app, pane, d) {
     warningsList(skill),
     h('p', { className: 'muted path' }, skill.path),
     sessions,
+    descriptionBlock(skill),
     h('section', { className: 'sub' }, h('h3', {}, 'Preview'), preview(d.body)),
     h('section', { className: 'sub' }, h('h3', {}, 'SKILL.md'), h('pre', { className: 'raw' }, `---\n${d.frontmatterText}\n---\n\n${d.body}`)),
     h('section', { className: 'sub' }, h('h3', {}, 'Files'), h('ul', { className: 'plain mono' }, d.files.map((f) => h('li', {}, f)))),
@@ -88,6 +90,7 @@ function editableView(app, pane, d) {
   const project = skill.source === 'project' ? skill.owner.project : null;
   const fm = h('textarea', { className: 'input mono', rows: 6, spellcheck: false, value: d.frontmatterText, ariaLabel: 'Frontmatter (YAML)' });
   const body = h('textarea', { className: 'input mono', rows: 16, value: d.body, ariaLabel: 'Body (Markdown)' });
+  const descSlot = h('div', {}, descriptionBlock(skill));
   const summary = h('div', { className: 'summary', ariaLive: 'polite' });
   const previewSlot = h('div', { hidden: true });
   const outcome = h('div', {});
@@ -100,8 +103,8 @@ function editableView(app, pane, d) {
     try {
       const v = await api('skills/validate', { method: 'POST', body: { dirName: skill.dirName, frontmatterText: fm.value, body: body.value } });
       valid = v.ok;
+      mount(descSlot, descriptionBlock(v));
       mount(summary,
-        h('p', {}, `Listing: ${tokens(v.cost.tokens)} tokens (${num(v.cost.chars)} chars)${v.cost.truncated ? ', description cut at 1536 chars' : ''}`),
         v.errors.length ? h('ul', { className: 'errors', role: 'alert' }, v.errors.map((e) => h('li', {}, e))) : null);
     } catch (e) {
       mount(summary, notice('error', `Couldn't check the frontmatter: ${e.message}`));
@@ -181,6 +184,7 @@ function editableView(app, pane, d) {
     h('p', { className: 'muted path' }, skill.path),
     notice('info', pickupNotice(skill), project ? h('p', {}, projectWriteNotice(project)) : null),
     overrideSummary(skill),
+    descSlot,
     field('Frontmatter (YAML)', fm),
     field('Body (Markdown)', body),
     summary,

@@ -89,6 +89,10 @@ try {
     });
     assert.deepEqual(misaligned, [], 'skills table rows align with the header');
     assert.equal(await pane(page).getByRole('textbox', { name: 'Frontmatter (YAML)' }).count(), 0);
+    const desc = pane(page).locator('.description');
+    await desc.getByText('Use when cc tool results need filtering or aggregating before you read them').waitFor();
+    assert.ok(await desc.isVisible(), 'description visible in the read-only detail');
+    assert.ok((await desc.boundingBox()).y < (await pane(page).locator('.preview').boundingBox()).y, 'description sits above the preview');
     await shot(page, '02-readonly-detail');
 
     // 2b. Convention skill: sessions listed.
@@ -99,6 +103,9 @@ try {
 
     // 3. Hostile skill: preview renders text only.
     await openSkill(page, 'user:~:hostile');
+    const hostileDesc = pane(page).locator('.description');
+    await hostileDesc.getByText('Renders <img src=x onerror=alert(1)> safely').waitFor();
+    assert.equal(await hostileDesc.locator('img').count(), 0, 'description is text, not markup');
     await pane(page).getByRole('button', { name: 'Preview' }).click();
     const preview = pane(page).locator('.preview');
     await preview.getByText('This body tries <img src=x onerror=alert(1)>', { exact: false }).waitFor();
@@ -127,13 +134,15 @@ try {
     await shot(page, '04b-created');
 
     // 5. Edit its description: the live cost changes, then save.
-    const summary = pane(page).locator('.summary');
+    const summary = pane(page).locator('.description');
+    await summary.getByText('Write a conventional commit message for the staged diff').waitFor();
     await summary.getByText(/Listing: ~\d+ tokens/).waitFor();
     const before = await summary.textContent();
     const fm = pane(page).getByRole('textbox', { name: 'Frontmatter (YAML)' });
     await fm.fill('name: commit-msg\ndescription: Write a conventional commit message for the staged diff, with a scope and a short body explaining why');
-    await page.waitForFunction((b) => document.querySelector('.summary')?.textContent !== b, before);
+    await page.waitForFunction((b) => document.querySelector('.description')?.textContent !== b, before);
     assert.notEqual(await summary.textContent(), before);
+    await summary.getByText('with a scope and a short body explaining why').waitFor();
     await pane(page).getByRole('button', { name: 'Save' }).click();
     await pane(page).getByText('Saved.').waitFor();
     assert.match(await fs.readFile(fx.roots.p('home/.claude/skills/commit-msg/SKILL.md'), 'utf8'), /with a scope and a short body/);
@@ -200,6 +209,7 @@ try {
       assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth), 'no page-level horizontal overflow');
       await shot(page, `10-${label}-inventory`);
       await openSkill(page, 'user:~:pdf-helper');
+      await pane(page).locator('.description').getByText('when the user works with PDF files').waitFor();
       await shot(page, `11-${label}-detail`);
       assert.deepEqual(bad, []);
     }, { headless: true, viewport });
