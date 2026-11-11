@@ -150,3 +150,6 @@ dialog.confirm .actions { justify-content: flex-end; }
   .layout.has-pane .main { display: none; }
   .pane { position: static; max-height: none; }
 }
+
+.description .desc-text { margin: 0.25rem 0 0.5rem; white-space: pre-wrap; overflow-wrap: anywhere; }
+.description h3 { margin-bottom: 0; }

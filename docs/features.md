@@ -28,8 +28,9 @@ Deleted skills with where they came from and when; **Restore** puts the folder b
 
 ## Side pane
 
-- **Read-only skills** — owner badge, pickup notice, path, carrying sessions (convention skills), rendered preview, raw `SKILL.md`, file list.
-- **Your and project skills** — `Frontmatter (YAML)` and `Body (Markdown)` editors with a live check (debounced 400 ms: listing cost, frontmatter errors), Save (refused if the file changed on disk since opening: *Reload*), Preview, Enable/Disable, Delete (in-page confirmation; the notice offers *Undo*).
+- **Description block** (every skill, above the preview/editors) — the frontmatter `description`, `when_to_use` when present, and their listing cost, as plain text (never rendered as Markdown). For your and project skills it follows the frontmatter textarea live, from the same debounced check that reports errors.
+- **Read-only skills** — owner badge, pickup notice, path, carrying sessions (convention skills), description block, rendered preview, raw `SKILL.md`, file list.
+- **Your and project skills** — `Frontmatter (YAML)` and `Body (Markdown)` editors with a live check (debounced 400 ms: description block and listing cost, frontmatter errors), Save (refused if the file changed on disk since opening: *Reload*), Preview, Enable/Disable, Delete (in-page confirmation; the notice offers *Undo*).
 - **New skill** — where (you, or a registered local project), name (live rule check), description (live cost), body.
 - **Run evals with skill-creator** — shown when `anthropic-skills:skill-creator` is installed: a ready prompt naming the skill's path, with Copy.
 
