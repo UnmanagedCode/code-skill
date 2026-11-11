@@ -65,16 +65,43 @@ function meta(app, skill) {
     h('span', {}, u ? `${num(u.count)} uses` : app.state.usage ? 'never fired' : ''));
 }
 
+// The Enable/Disable button for a skill whose override state is known; errors land in `outcome`.
+function toggleControls(app, skill, outcome) {
+  const isOff = skill.override.effective === 'off';
+  const project = skill.source === 'project' ? skill.owner.project : null;
+  const btn = h('button', {
+    type: 'button', className: 'btn', disabled: skill.override.lockedByPolicy || !skill.toggleable,
+    title: !skill.toggleable ? 'Frontmatter name ≠ folder name: fix the name to enable or disable it' : undefined,
+  }, isOff ? 'Enable' : 'Disable');
+  btn.addEventListener('click', async () => {
+    try {
+      const res = await api('skills/enabled', { method: 'PUT', body: { ...scopeOf(skill), name: skill.dirName, enabled: isOff } });
+      const g = project ? gitNotice(project, res.git) : null;
+      app.notify(g ? 'warn' : 'info', `${skill.invokeName} ${isOff ? 'enabled' : 'disabled'}. ${TOGGLE_NOTICE}`, g ? h('p', {}, g) : null);
+      await app.loadInventory();
+      app.renderPane();
+    } catch (e) {
+      mount(outcome, notice('error', `Couldn't change it: ${e.message}`));
+    }
+  });
+  return btn;
+}
+
 function readOnlyView(app, pane, d) {
   const { skill } = d;
   const sessions = skill.sessions ? h('section', { className: 'sub' }, h('h3', {}, `Carried by ${skill.sessions.length} session${skill.sessions.length > 1 ? 's' : ''}`),
     h('ul', { className: 'plain' }, skill.sessions.map((s) => h('li', {}, `${s.label}${s.status ? ` (${s.status})` : ''}`)))) : null;
+  const outcome = h('div', {});
+  const togglable = Boolean(skill.override);
   mount(pane,
     header(app, skill.invokeName, meta(app, skill)),
-    h('p', { className: 'badge badge-block' }, `Read-only: owned by ${skill.owner.label}`),
+    h('p', { className: 'badge badge-block' }, togglable ? 'Content read-only: synced from claude.ai (enable/disable only)' : `Read-only: owned by ${skill.owner.label}`),
     notice('info', pickupNotice(skill)),
     warningsList(skill),
     h('p', { className: 'muted path' }, skill.path),
+    togglable ? overrideSummary(skill) : null,
+    togglable ? h('div', { className: 'actions' }, toggleControls(app, skill, outcome)) : null,
+    outcome,
     sessions,
     descriptionBlock(skill),
     h('section', { className: 'sub' }, h('h3', {}, 'Preview'), preview(d.body)),
@@ -144,22 +171,7 @@ function editableView(app, pane, d) {
     if (!previewSlot.hidden) mount(previewSlot, preview(body.value));
   });
 
-  const isOff = skill.override.effective === 'off';
-  const toggleBtn = h('button', {
-    type: 'button', className: 'btn', disabled: skill.override.lockedByPolicy || !skill.toggleable,
-    title: !skill.toggleable ? 'Frontmatter name ≠ folder name: fix the name to enable or disable it' : undefined,
-  }, isOff ? 'Enable' : 'Disable');
-  toggleBtn.addEventListener('click', async () => {
-    try {
-      const res = await api('skills/enabled', { method: 'PUT', body: { ...target, enabled: isOff } });
-      const g = project ? gitNotice(project, res.git) : null;
-      app.notify(g ? 'warn' : 'info', `${skill.invokeName} ${isOff ? 'enabled' : 'disabled'}. ${TOGGLE_NOTICE}`, g ? h('p', {}, g) : null);
-      await app.loadInventory();
-      app.renderPane();
-    } catch (e) {
-      mount(outcome, notice('error', `Couldn't change it: ${e.message}`));
-    }
-  });
+  const toggleBtn = toggleControls(app, skill, outcome);
 
   const deleteBtn = h('button', { type: 'button', className: 'btn btn-danger' }, 'Delete');
   deleteBtn.addEventListener('click', async () => {

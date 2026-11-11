@@ -3,6 +3,8 @@ import { parseSkillMd, skillFields } from '../skillFile.js';
 import { sha256 } from '../fsx/atomicWrite.js';
 
 export const WRITABLE_SOURCES = Object.freeze(['user', 'project']);
+// Sources whose enable/disable switch Code Skill drives (the CLI honours skillOverrides for exactly these).
+export const TOGGLEABLE_SOURCES = Object.freeze(['user', 'project', 'synced']);
 
 // The name Claude Code knows a skill by (and keys skillOverrides on): frontmatter `name`, else the folder name.
 export const skillNameOf = (record) => record.name || record.dirName;
@@ -14,8 +16,9 @@ export async function readSkillRecord({ source, ownerKey, owner, namespace = nul
   const fields = skillFields(parsed.frontmatter);
   const warnings = [...parsed.errors];
   const writable = WRITABLE_SOURCES.includes(source);
+  const toggleCapable = TOGGLEABLE_SOURCES.includes(source);
   const nameMismatch = Boolean(fields.name) && fields.name !== dirName;
-  if (nameMismatch) warnings.push(`name "${fields.name}" ≠ directory "${dirName}"${writable ? ': enable/disable is off until they match' : ''}`);
+  if (nameMismatch) warnings.push(`name "${fields.name}" ≠ directory "${dirName}"${toggleCapable ? ': enable/disable is off until they match' : ''}`);
   if (!fields.description) warnings.push('no description: the listing shows only the name');
   const skillName = fields.name || dirName;
   return {
@@ -23,7 +26,7 @@ export async function readSkillRecord({ source, ownerKey, owner, namespace = nul
     source,
     owner,
     writable,
-    toggleable: writable && !nameMismatch,
+    toggleable: toggleCapable && !nameMismatch,
     dirName,
     name: fields.name,
     invokeName: namespace ? `${namespace}:${skillName}` : skillName,

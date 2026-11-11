@@ -5,7 +5,7 @@ import { notice, gitNotice, TOGGLE_NOTICE } from '../notices.js';
 
 const SOURCES = Object.keys(SOURCE_LABELS);
 
-export const scopeOf = (skill) => (skill.source === 'project' ? { scope: 'project', project: skill.owner.project } : { scope: 'user' });
+export const scopeOf = (skill) => (skill.source === 'project' ? { scope: 'project', project: skill.owner.project } : { scope: skill.source === 'synced' ? 'synced' : 'user' });
 
 // Usage per invoke name, or null while the scan is still running.
 export const usageMap = (usage) => (usage ? new Map(usage.skills.map((u) => [u.invokeName, u])) : null);
@@ -71,7 +71,7 @@ async function toggle(app, skill, enabled) {
 const MISMATCH_TITLE = 'Frontmatter name ≠ folder name: fix the name to enable or disable it';
 
 function stateCell(app, skill) {
-  if (skill.writable && !skill.toggleable) {
+  if (skill.override && !skill.toggleable) {
     return h('label', { className: 'switch', title: MISMATCH_TITLE },
       h('input', { type: 'checkbox', role: 'switch', checked: skill.override.effective !== 'off', disabled: true, ariaLabel: `Enabled: ${skill.invokeName} (${MISMATCH_TITLE})` }),
       h('span', {}, skill.override.effective));

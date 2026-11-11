@@ -10,7 +10,8 @@
   "scripts": {
     "start": "node server.js",
     "test": "node tests/run.mjs",
-    "harness": "node harness/playwright/golden-path.mjs"
+    "harness": "node harness/playwright/golden-path.mjs",
+    "live:synced": "node harness/live/synced-override.mjs"
   },
   "dependencies": {
     "express": "^4.22.2",

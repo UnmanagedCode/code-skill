@@ -11,7 +11,7 @@ State lives in the URL: `?tab=usage|trash` (Inventory is the default) and `?skil
 - **Listing budget** — the listing that *every* session carries (user, claude.ai-synced, user/managed-scope installed plugins, cc core, cc plugins) against the budget for 200k and 1M contexts plus each distinct `contextWindowTokens` of live cc sessions (tagged "live session"). Budget = context tokens × 4 × 1% chars. Over budget, Claude Code shortens descriptions.
 - **Totals by owner** — skills, chars, ~tokens per owner (the sum of its listed skills; a convention namespace counts one variant per name), and which sessions list them (every session / sessions in a project / a convention namespace's sessions).
 - **Skills table** — click a row (or its name) to open the side pane. Columns: invoke name, source, owner, ~tokens, listing state (full / name only / not listed, `cut` when the text passes 1536 chars), uses, last used, state. ⚠ marks warnings, duplicate names and near-duplicates (hover for the notes). Filter box (name, description, owner) and source chips. With the side pane open, owner, listing and last-used columns hide.
-- **State column** — a switch for user and project skills (disabled, with a tooltip, when the frontmatter `name` differs from the folder name); "read-only" (hover: owner) for everything else; "plugin enabled/disabled" for installed Claude Code plugins. A policy-locked skill's switch is disabled.
+- **State column** — a switch for user, project and claude.ai-synced skills (disabled, with a tooltip, when the frontmatter `name` differs from the folder name); "read-only" (hover: owner) for everything else; "plugin enabled/disabled" for installed Claude Code plugins. A policy-locked skill's switch is disabled.
 - **Source errors** — a source that fails to load shows a banner; the rest still lists.
 
 ### Usage
@@ -29,27 +29,28 @@ Deleted skills with where they came from and when; **Restore** puts the folder b
 ## Side pane
 
 - **Description block** (every skill, above the preview/editors) — the frontmatter `description`, `when_to_use` when present, and their listing cost, as plain text (never rendered as Markdown). For your and project skills it follows the frontmatter textarea live, from the same debounced check that reports errors.
-- **Read-only skills** — owner badge, pickup notice, path, carrying sessions (convention skills), description block, rendered preview, raw `SKILL.md`, file list.
+- **Read-only skills** — owner badge, pickup notice, path, carrying sessions (convention skills), description block, rendered preview, raw `SKILL.md`, file list. A synced skill also shows its state (`overrideSummary`) and Enable/Disable, under a "Content read-only" badge.
 - **Your and project skills** — `Frontmatter (YAML)` and `Body (Markdown)` editors with a live check (debounced 400 ms: description block and listing cost, frontmatter errors), Save (refused if the file changed on disk since opening: *Reload*), Preview, Enable/Disable, Delete (in-page confirmation; the notice offers *Undo*).
 - **New skill** — where (you, or a registered local project), name (live rule check), description (live cost), body.
 - **Run evals with skill-creator** — shown when `anthropic-skills:skill-creator` is installed: a ready prompt naming the skill's path, with Copy.
 
 ## Sources and owner labels
 
-| Source | Where | Owner label | Writable / toggleable |
-|---|---|---|---|
-| `user` | `~/.claude/skills/<name>/` | you (~/.claude/skills) | yes |
-| `project` | `<project main checkout>/.claude/skills/<name>/` | project `<name>` | yes |
-| `synced` | `~/.claude/skills/synced/<org>_<account>/` (signed-in account) | claude.ai sync | no |
-| `host-plugin` | `installed_plugins.json` entries | Claude Code plugin `<name@marketplace>` | no |
-| `cc-core` | `<cc>/claude-plugin` | code-conductor (core) | no |
-| `cc-plugin` | an enabled cc plugin's `claudePlugin` root | cc plugin `<id>` | no |
-| `convention` | `<PROJECTS_ROOT>/.code-conductor/convention-skills/<instance>/<ns>/` | Settings → Conventions | no |
+| Source | Where | Owner label | Writable | Toggleable |
+|---|---|---|---|---|
+| `user` | `~/.claude/skills/<name>/` | you (~/.claude/skills) | yes | yes |
+| `project` | `<project main checkout>/.claude/skills/<name>/` | project `<name>` | yes | yes |
+| `synced` | `~/.claude/skills/synced/<org>_<account>/` (signed-in account) | claude.ai sync | no | yes |
+| `host-plugin` | `installed_plugins.json` entries | Claude Code plugin `<name@marketplace>` | no | no |
+| `cc-core` | `<cc>/claude-plugin` | code-conductor (core) | no | no |
+| `cc-plugin` | an enabled cc plugin's `claudePlugin` root | cc plugin `<id>` | no | no |
+| `convention` | `<PROJECTS_ROOT>/.code-conductor/convention-skills/<instance>/<ns>/` | Settings → Conventions | no | no |
 
 ## Toggle semantics
 
 - Overrides are keyed on the skill's name — frontmatter `name`, else the folder name — as the CLI keys them. When `name` and the folder disagree the skill is flagged and can't be toggled here.
 - Disable writes `"off"` for that name: into `~/.claude/settings.json` (your skill) or the project's `.claude/settings.local.json` (project skill).
+- A synced skill is keyed `anthropic-skills:<name>` in `~/.claude/settings.json`. That key beats the bare `<name>` alias in every layer, so the bare key counts only when no layer sets the namespaced one (and only when no user skill has that bare name). Enable removes the namespaced key and writes an explicit `"on"` when a bare `off` would otherwise still apply. The bare key is never written. A policy layer's bare `off` still applies, unless that layer sets the namespaced key.
 - Enable removes that key; if a lower layer (e.g. your user settings, for a project skill) still turns it off, it writes `"on"` instead.
 - Managed policy (`managed-settings.json`, `managed-settings.d/*.json`, `remote-settings.json`) wins and can't be changed here.
 - `name-only` and `user-invocable-only` values (set via `/skills`) are shown, not offered.

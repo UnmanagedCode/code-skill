@@ -6,7 +6,8 @@ import * as ccCore from './discovery/ccCore.js';
 import * as ccPlugins from './discovery/ccPlugins.js';
 import * as convention from './discovery/convention.js';
 import { readLayers } from './overrides/layers.js';
-import { effectiveFor } from './overrides/effective.js';
+import { effectiveFor, overrideKeysOf } from './overrides/effective.js';
+import { TOGGLEABLE_SOURCES, skillNameOf } from './discovery/record.js';
 import { nearDuplicates } from './similarity.js';
 import {
   costOf, listingFor, entryTokens, listingTotalChars, listingBudgetChars,
@@ -46,8 +47,9 @@ export async function buildInventory({ config, conductor }) {
 
   const layers = await readLayers(config, local);
   sourceErrors.push(...layers.errors);
+  const userSkillNames = new Set(skills.filter((r) => r.source === 'user').map(skillNameOf));
   for (const r of skills) {
-    if (r.writable) r.override = effectiveFor(r, layers);
+    if (TOGGLEABLE_SOURCES.includes(r.source)) r.override = effectiveFor(r, layers, overrideKeysOf(r, userSkillNames));
     const effective = r.override?.effective ?? 'on';
     const listing = r.source === 'host-plugin' && !r.enabled ? 'hidden' : listingFor(effective, r.disableModelInvocation);
     r.cost = costOf({ invokeName: r.invokeName, description: r.description, whenToUse: r.whenToUse, listing });

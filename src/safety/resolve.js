@@ -3,7 +3,10 @@ import path from 'node:path';
 import { validateSkillName } from '../../shared/names.js';
 import { refuse } from './errors.js';
 
+import { syncedBucket } from '../discovery/synced.js';
+
 export const WRITABLE_SCOPES = Object.freeze(['user', 'project']);
+export const TOGGLE_SCOPES = Object.freeze(['user', 'project', 'synced']);
 
 const inside = (root, p) => {
   const rel = path.relative(root, p);
@@ -17,6 +20,11 @@ const lstatOrNull = async (p) => {
 // Write routes accept only {scope, project?, name}; anything else is read-only.
 export function assertWritableScope(scope) {
   if (!WRITABLE_SCOPES.includes(scope)) refuse('READ_ONLY_SOURCE', 403, `skills from "${scope}" are read-only here; only your own (user) and project skills can be changed`);
+}
+
+// The enable/disable route also accepts synced skills (their content stays read-only).
+export function assertToggleScope(scope) {
+  if (!TOGGLE_SCOPES.includes(scope)) refuse('READ_ONLY_SOURCE', 403, `skills from "${scope}" can't be enabled or disabled here; only user, project and claude.ai-synced skills can`);
 }
 
 // A registered, local cc project, looked up by exact name. The client never sends a path.
@@ -72,6 +80,11 @@ export async function resolveSkillTarget({ scope, project, name }, { config, con
   }
   if (!inside(realRoot, realBase)) refuse('PATH_ESCAPE', 400, `${base} resolves outside ${root}`);
 
+  return { root, base, ...await checkSkillDir(base, realBase, name), projectPath };
+}
+
+// The skill folder must be a real directory directly under the real base, SKILL.md a regular file.
+async function checkSkillDir(base, realBase, name) {
   const dir = path.join(base, name);
   const skillMd = path.join(dir, 'SKILL.md');
   const dirStat = await lstatOrNull(dir);
@@ -81,5 +94,23 @@ export async function resolveSkillTarget({ scope, project, name }, { config, con
     const mdStat = await lstatOrNull(skillMd);
     if (mdStat && (mdStat.isSymbolicLink() || !mdStat.isFile())) refuse('SYMLINK_REFUSED', 400, `${skillMd} is not a regular file`);
   }
-  return { root, base, dir, skillMd, exists: Boolean(dirStat), projectPath };
+  return { dir, skillMd, exists: Boolean(dirStat) };
+}
+
+// Read-only: where a claude.ai-synced skill lives in the signed-in account's bucket, with the
+// same containment checks. No signed-in account or bucket → NOT_FOUND. → { dir, skillMd, exists }
+export async function resolveSyncedSkill({ name }, { config }) {
+  const nameCheck = validateSkillName(name);
+  if (!nameCheck.ok) refuse(nameCheck.code, 400, nameCheck.message);
+  const bucket = await syncedBucket(config);
+  if (!bucket) refuse('NOT_FOUND', 404, 'no claude.ai account is signed in, so there are no synced skills');
+  let realBase;
+  try {
+    realBase = await fs.realpath(bucket);
+    if (!inside(await fs.realpath(path.join(config.claudeDir, 'skills')), realBase)) refuse('PATH_ESCAPE', 400, `${bucket} resolves outside ${config.claudeDir}`);
+  } catch (e) {
+    if (e.code === 'ENOENT') refuse('NOT_FOUND', 404, 'the synced skills folder does not exist');
+    throw e;
+  }
+  return checkSkillDir(bucket, realBase, name);
 }

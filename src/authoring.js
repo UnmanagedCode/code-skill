@@ -1,12 +1,13 @@
 import { promises as fs } from 'node:fs';
-import { resolveSkillTarget, assertWritableScope } from './safety/resolve.js';
+import { resolveSkillTarget, resolveSyncedSkill, assertWritableScope } from './safety/resolve.js';
 import { refuse } from './safety/errors.js';
 import { validateSkillName } from '../shared/names.js';
 import { writeFileAtomic, sha256 } from './fsx/atomicWrite.js';
 import { buildSkillMd, composeSkillMd, validateFrontmatter, parseSkillMd, skillFields } from './skillFile.js';
 import { setSkillOverride } from './overrides/settingsFile.js';
 import { readLayers, userSettingsFile, localSettingsFile } from './overrides/layers.js';
-import { effectiveFor } from './overrides/effective.js';
+import { effectiveFor, overrideKeysOf } from './overrides/effective.js';
+import { findSkill } from './inventory.js';
 import { moveToTrash, inspectEntry, takeFromTrash } from './trash.js';
 import { gitReport } from './gitProbe.js';
 
@@ -14,7 +15,7 @@ import { gitReport } from './gitProbe.js';
 // skills. deps = { config, conductor, git }. Every path comes from
 // resolveSkillTarget; project writes report their effect on the checkout's git state.
 
-export const skillId = (scope, project, name) => `${scope}:${scope === 'user' ? '~' : project}:${name}`;
+export const skillId = (scope, project, name) => `${scope}:${scope === 'project' ? project : '~'}:${name}`;
 
 const needString = (v, what) => {
   if (typeof v !== 'string') refuse('BAD_REQUEST', 400, `${what} must be a string`);
@@ -65,31 +66,51 @@ export async function updateSkill(deps, { scope, project, name, frontmatterText,
   return { id: skillId(scope, project, name), etag: sha256(text), git: await projectGit(deps, t, t.skillMd) };
 }
 
-async function overrideState(deps, record) {
+async function overrideState(deps, record, keys) {
   const local = (await deps.conductor.listProjects()).filter((p) => p.system === 'local' && typeof p.path === 'string');
-  return effectiveFor(record, await readLayers(deps.config, local));
+  return effectiveFor(record, await readLayers(deps.config, local), keys);
 }
 
-// Disable writes "off"; enable removes our key and writes "on" only if a lower layer still turns it off.
+// The frontmatter name the CLI keys skillOverrides on must agree with the folder.
+async function assertNameMatchesFolder(skillMd, name) {
+  const declared = skillFields(parseSkillMd((await readSkillBytes(skillMd)).toString('utf8')).frontmatter).name;
+  if (declared && declared !== name) refuse('NAME_MISMATCH', 409, `SKILL.md names this skill "${declared}" but its folder is "${name}"; make them match before enabling or disabling it`);
+  return declared;
+}
+
+// Disable writes "off"; enable removes our key and writes "on" only if something else still turns it off.
+async function writeToggle({ file, key, enabled, containRoot, stateNow }) {
+  const opts = { containRoot };
+  if (!enabled) return setSkillOverride(file, key, 'off', opts);
+  await setSkillOverride(file, key, undefined, opts);
+  if ((await stateNow()).effective !== 'on') await setSkillOverride(file, key, 'on', opts);
+}
+
+async function setSyncedEnabled(deps, { name, enabled }) {
+  const t = await resolveSyncedSkill({ name }, deps);
+  if (!t.exists) refuse('NOT_FOUND', 404, 'that skill no longer exists');
+  const declared = await assertNameMatchesFolder(t.skillMd, name);
+  const record = { source: 'synced', dirName: name, name: declared, owner: {} };
+  // The inventory is the one place that knows which bare names are reserved by user skills.
+  const stateNow = async () => (await findSkill(deps, skillId('synced', undefined, name)))?.override ?? refuse('NOT_FOUND', 404, 'that skill no longer exists');
+  if ((await stateNow()).lockedByPolicy) refuse('POLICY_LOCKED', 409, 'managed policy sets this skill; it cannot be changed here');
+  await writeToggle({ file: userSettingsFile(deps.config), key: overrideKeysOf(record)[0], enabled, containRoot: deps.config.claudeDir, stateNow });
+  return { override: await stateNow(), git: null };
+}
+
 export async function setEnabled(deps, { scope, project, name, enabled }) {
   if (typeof enabled !== 'boolean') refuse('BAD_REQUEST', 400, 'enabled must be true or false');
+  if (scope === 'synced') return setSyncedEnabled(deps, { name, enabled });
+  assertWritableScope(scope);
   const t = await resolveSkillTarget({ scope, project, name }, deps);
   if (!t.exists) refuse('NOT_FOUND', 404, 'that skill no longer exists');
-  // The CLI keys skillOverrides on the frontmatter name; toggle only when it agrees with the folder.
-  const declared = skillFields(parseSkillMd((await readSkillBytes(t.skillMd)).toString('utf8')).frontmatter).name;
-  if (declared && declared !== name) refuse('NAME_MISMATCH', 409, `SKILL.md names this skill "${declared}" but its folder is "${name}"; make them match before enabling or disabling it`);
+  const declared = await assertNameMatchesFolder(t.skillMd, name);
   const record = { source: scope, dirName: name, name: declared, owner: { project } };
-  const before = await overrideState(deps, record);
-  if (before.lockedByPolicy) refuse('POLICY_LOCKED', 409, 'managed policy sets this skill; it cannot be changed here');
+  const stateNow = () => overrideState(deps, record);
+  if ((await stateNow()).lockedByPolicy) refuse('POLICY_LOCKED', 409, 'managed policy sets this skill; it cannot be changed here');
   const file = scope === 'user' ? userSettingsFile(deps.config) : localSettingsFile(t.projectPath);
-  const opts = { containRoot: t.root };
-  if (!enabled) {
-    await setSkillOverride(file, name, 'off', opts);
-  } else {
-    await setSkillOverride(file, name, undefined, opts);
-    if ((await overrideState(deps, record)).effective !== 'on') await setSkillOverride(file, name, 'on', opts);
-  }
-  return { override: await overrideState(deps, record), git: await projectGit(deps, t, file) };
+  await writeToggle({ file, key: name, enabled, containRoot: t.root, stateNow });
+  return { override: await stateNow(), git: await projectGit(deps, t, file) };
 }
 
 export async function deleteSkill(deps, { scope, project, name }) {
