@@ -7,8 +7,9 @@
 // makes every case unjudgeable.
 // --real-config: runs claude with CLAUDE_CONFIG_DIR=<source> (its login and synced skills) from a temp project and
 // puts the overrides in <tmpcwd>/.claude/settings.local.json. That exercises the merged-settings lookup the user
-// layer shares, not the user settings file itself. The CLI writes its ordinary session state into <source>; this
-// script never touches <source>/settings.json or the credentials.
+// layer shares, not the user settings file itself. Write surface in this mode: the script writes only that temp
+// settings.local.json; the CLI itself writes its ordinary session state into <source> (`.claude.json`, `projects/**`
+// transcripts and the like). <source>/settings.json and the credentials are never touched.
 import { promises as fs } from 'node:fs';
 import { spawn } from 'node:child_process';
 import os from 'node:os';
@@ -44,7 +45,8 @@ async function initInfo({ configDir, cwd, token }) {
   for (const line of out.split('\n')) {
     let msg;
     try { msg = JSON.parse(line); } catch { continue; }
-    if (msg.type === 'system' && msg.subtype === 'init') return { skills: msg.skills ?? [], slash: msg.slash_commands ?? [] };
+    if (msg.type === 'system' && msg.subtype === 'init') // The skills the CLI lists: `skills` when init has it, else `slash_commands`.
+    return { skills: msg.skills ?? msg.slash_commands ?? [] };
   }
   throw new Error(`no system/init line from claude (stderr: ${(token ? err.replace(token, '***') : err).slice(0, 300)})`);
 }
@@ -90,13 +92,13 @@ try {
   const results = [];
   for (const c of cases) {
     await fs.writeFile(settingsFile, JSON.stringify(c.overrides ? { skillOverrides: c.overrides } : {}), { mode: 0o600 });
-    const { skills, slash } = await initInfo({ configDir, cwd, token });
+    const { skills } = await initInfo({ configDir, cwd, token });
     const present = skills.includes(key);
     results.push({ ...c, present, ok: present === c.expectPresent });
     console.log(`${present === c.expectPresent ? 'PASS' : 'FAIL'}  ${c.label}: ${key} ${present ? 'present' : 'absent'} (expected ${c.expectPresent ? 'present' : 'absent'}; ${skills.length} skills listed)`);
     if (c.label.startsWith('baseline') && !present) {
-      const alt = [...skills, ...slash].filter((n) => n.includes(name));
-      console.log(`baseline invalid: ${key} not listed. Names containing "${name}" in skills/slash_commands: ${alt.length ? alt.join(', ') : 'none'}`);
+      const alt = skills.filter((n) => n.includes(name));
+      console.log(`baseline invalid: ${key} not listed. Listed names containing "${name}": ${alt.length ? alt.join(', ') : 'none'}`);
       break;
     }
   }

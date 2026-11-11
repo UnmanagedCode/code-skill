@@ -137,3 +137,31 @@ test('content and delete routes still refuse synced → 403 READ_ONLY_SOURCE', a
   }
   assert.deepEqual(await snapshotTree(app.roots.root), before);
 });
+
+// Invariant: resolveSyncedSkill's containment holds through the toggle route — a symlinked skill folder or SKILL.md,
+// or a bucket symlinked out of ~/.claude/skills, is refused and nothing is written to settings.
+async function refusesToggle(t, spec, code) {
+  const app = await boot(t, spec);
+  const before = await snapshotTree(app.roots.root);
+  const res = await toggle(app, false);
+  assert.equal(res.status, 400, JSON.stringify(res.body));
+  assert.equal(res.body.code, code);
+  assert.deepEqual(await snapshotTree(app.roots.root), before, 'nothing written, settings included');
+  await assert.rejects(fs.access(app.roots.p(SETTINGS)));
+}
+const ACCOUNT = { 'home/.claude.json': { oauthAccount: { organizationUuid: ORG, accountUuid: ACCT } } };
+
+test('symlinked synced skill folder → 400 SYMLINK_REFUSED, settings untouched', (t) => refusesToggle(t, {
+  files: { ...ACCOUNT, 'outside/pdf/SKILL.md': skillMd('pdf', 'x') },
+  symlinks: { [`${BUCKET}/pdf`]: 'outside/pdf' },
+}, 'SYMLINK_REFUSED'));
+
+test('symlinked synced SKILL.md → 400 SYMLINK_REFUSED, settings untouched', (t) => refusesToggle(t, {
+  files: { ...ACCOUNT, 'outside/plain.md': skillMd('pdf', 'x'), [`${BUCKET}/pdf/notes.txt`]: 'n' },
+  symlinks: { [`${BUCKET}/pdf/SKILL.md`]: 'outside/plain.md' },
+}, 'SYMLINK_REFUSED'));
+
+test('bucket symlinked outside ~/.claude/skills → 400 PATH_ESCAPE, settings untouched', (t) => refusesToggle(t, {
+  files: { ...ACCOUNT, 'outside/bucket/pdf/SKILL.md': skillMd('pdf', 'x') },
+  symlinks: { [BUCKET]: 'outside/bucket' },
+}, 'PATH_ESCAPE'));
