@@ -13,9 +13,10 @@ export function loadConfig(env) {
   const dataDir = need('CONDUCTOR_PLUGIN_DATA_DIR');
   const conductorUrl = need('CONDUCTOR_URL');
   const projectsRoot = need('PROJECTS_ROOT');
-  const home = env.HOME ?? os.homedir();
-  // Same resolution as cc and the CLI: CLAUDE_CONFIG_DIR, else ~/.claude.
-  const claudeDir = env.CLAUDE_CONFIG_DIR ?? path.join(home, '.claude');
+  const home = env.HOME || os.homedir();
+  // Same resolution as cc and the CLI: CLAUDE_CONFIG_DIR, else ~/.claude (an empty value counts as unset).
+  const configDir = env.CLAUDE_CONFIG_DIR || null;
+  const claudeDir = configDir ?? path.join(home, '.claude');
   return {
     port: Number(env.PORT) || 7420,
     host: env.HOST || '127.0.0.1',
@@ -23,10 +24,10 @@ export function loadConfig(env) {
     conductorUrl,
     projectsRoot,
     claudeDir,
-    claudeJson: env.CLAUDE_CONFIG_DIR ? path.join(env.CLAUDE_CONFIG_DIR, '.claude.json') : path.join(home, '.claude.json'),
+    claudeJson: configDir ? path.join(configDir, '.claude.json') : path.join(home, '.claude.json'),
     coreDir: env.CONDUCTOR_PROJECT_DIR ? path.join(env.CONDUCTOR_PROJECT_DIR, 'claude-plugin') : null,
     storeDir: path.join(projectsRoot, '.code-conductor'),
     // Managed-policy settings dir; the override exists for tests and the harness.
-    managedDir: env.CODE_SKILL_MANAGED_DIR ?? '/etc/claude-code',
+    managedDir: env.CODE_SKILL_MANAGED_DIR || '/etc/claude-code',
   };
 }

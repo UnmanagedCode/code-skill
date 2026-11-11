@@ -21,6 +21,7 @@ test('claudeDir is CLAUDE_CONFIG_DIR, else HOME/.claude', () => {
   const c = loadConfig({ ...base, CLAUDE_CONFIG_DIR: '/cfg' });
   assert.equal(c.claudeDir, '/cfg');
   assert.equal(c.claudeJson, path.join('/cfg', '.claude.json'));
+  assert.equal(loadConfig({ ...base, CLAUDE_CONFIG_DIR: '' }).claudeDir, path.join('/h', '.claude'), 'empty counts as unset');
 });
 
 // Invariant: cc's store and core plugin paths derive from the host variables.

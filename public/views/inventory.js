@@ -13,7 +13,7 @@ export const usageMap = (usage) => (usage ? new Map(usage.skills.map((u) => [u.i
 function appliesTo(total) {
   if (total.everySession) return 'every session';
   if (total.source === 'project') return `sessions in ${total.label.replace(/^project /, '')}`;
-  if (total.source === 'convention') return 'sessions carrying it';
+  if (total.source === 'convention') return 'its sessions';
   return 'sessions in that project';
 }
 
@@ -22,7 +22,7 @@ function budgetSection(inv) {
   return h('section', { className: 'card', ariaLabel: 'Listing budget' },
     h('h2', {}, 'Listing budget'),
     h('p', {}, `Every session lists these ${num(baseline.count)} skills: ${tokens(baseline.tokens)} tokens (${num(baseline.chars)} chars). Sessions add their project's skills and their convention skills on top.`),
-    h('table', { className: 'grid' },
+    h('div', { className: 'scroll' }, h('table', { className: 'grid' },
       h('thead', {}, h('tr', {}, h('th', {}, 'Context'), h('th', { className: 'n' }, 'Budget (chars)'), h('th', {}, 'Every-session listing'))),
       h('tbody', {}, contexts.map((c) => {
         const pct = Math.round((baseline.chars / c.chars) * 100);
@@ -30,7 +30,7 @@ function budgetSection(inv) {
           h('td', {}, `${contextLabel(c.contextTokens)} tokens`, c.live ? h('span', { className: 'tag' }, 'live session') : null),
           h('td', { className: 'n' }, num(c.chars)),
           h('td', {}, h('progress', { max: c.chars, value: Math.min(baseline.chars, c.chars), ariaLabel: `${pct}% of the ${contextLabel(c.contextTokens)} budget` }), ` ${pct}%`, pct > 100 ? h('span', { className: 'tag tag-warn' }, 'over budget') : null));
-      }))),
+      })))),
     h('p', { className: 'muted' }, 'Budget = context tokens × 4 chars × 1%. Over budget, Claude Code shortens skill descriptions in the listing to fit.'));
 }
 
@@ -39,9 +39,9 @@ function totalsSection(inv) {
   return h('section', { className: 'card', ariaLabel: 'Totals by owner' },
     h('h2', {}, 'Totals by owner'),
     h('div', { className: 'scroll' }, h('table', { className: 'grid' },
-      h('thead', {}, h('tr', {}, h('th', {}, 'Owner'), h('th', {}, 'Source'), h('th', { className: 'n' }, 'Skills'), h('th', { className: 'n' }, 'Chars'), h('th', { className: 'n' }, 'Tokens'), h('th', {}, 'Listed in'))),
+      h('thead', {}, h('tr', {}, h('th', {}, 'Owner'), h('th', { className: 'n' }, 'Skills'), h('th', { className: 'n' }, 'Chars'), h('th', { className: 'n' }, 'Tokens'), h('th', {}, 'Listed in'))),
       h('tbody', {}, rows.map((t) => h('tr', { dataset: { total: t.key } },
-        h('td', {}, t.label), h('td', {}, SOURCE_LABELS[t.source]), h('td', { className: 'n' }, num(t.count)),
+        h('td', {}, t.label), h('td', { className: 'n' }, num(t.count)),
         h('td', { className: 'n' }, num(t.chars)), h('td', { className: 'n' }, tokens(t.tokens)), h('td', {}, appliesTo(t))))))));
 }
 
@@ -77,7 +77,7 @@ function stateCell(app, skill) {
       h('span', {}, locked ? `${eff} (policy)` : eff === 'off' ? 'off' : eff === 'on' ? 'on' : eff));
   }
   if (skill.source === 'host-plugin') return h('span', { className: 'badge' }, skill.enabled ? 'plugin enabled' : 'plugin disabled');
-  return h('span', { className: 'badge', title: skill.owner.label }, `owned by ${skill.owner.label}`);
+  return h('span', { className: 'badge', title: `owned by ${skill.owner.label}` }, 'read-only');
 }
 
 function listingCell(skill) {
@@ -107,8 +107,8 @@ function skillTable(app) {
   if (!rows.length) return h('p', { className: 'muted' }, 'No skills match.');
   return h('div', { className: 'scroll' }, h('table', { className: 'grid skills', ariaLabel: 'Skills' },
     h('thead', {}, h('tr', {},
-      h('th', {}, 'Skill'), h('th', {}, 'Source'), h('th', {}, 'Owner'), h('th', { className: 'n' }, 'Tokens'),
-      h('th', {}, 'Listing'), h('th', { className: 'n' }, 'Uses'), h('th', {}, 'Last used'), h('th', {}, 'State'))),
+      h('th', {}, 'Skill'), h('th', {}, 'Source'), h('th', { className: 'wide-only' }, 'Owner'), h('th', { className: 'n' }, 'Tokens'),
+      h('th', { className: 'wide-only' }, 'Listing'), h('th', { className: 'n' }, 'Uses'), h('th', { className: 'wide-only' }, 'Last used'), h('th', {}, 'State'))),
     h('tbody', {}, rows.map((s) => {
       const notes = markersFor(s, inv, byId);
       const u = uses?.get(s.invokeName);
@@ -117,11 +117,11 @@ function skillTable(app) {
           h('button', { type: 'button', className: 'link', onClick: () => app.openSkill(s.id) }, s.invokeName),
           notes.length ? h('span', { className: 'marker', title: notes.join('\n'), ariaLabel: `${notes.length} note${notes.length > 1 ? 's' : ''}: ${notes.join('; ')}`, role: 'img' }, '⚠') : null),
         h('td', {}, h('span', { className: `src src-${s.source}` }, SOURCE_LABELS[s.source])),
-        h('td', { className: 'owner' }, s.owner.label),
+        h('td', { className: 'owner wide-only' }, s.owner.label),
         h('td', { className: 'n' }, s.cost.listing === 'hidden' ? '0' : tokens(s.cost.tokens)),
-        h('td', {}, listingCell(s)),
+        h('td', { className: 'wide-only' }, listingCell(s)),
         h('td', { className: 'n' }, usesCell(s, uses)),
-        h('td', {}, u ? ago(u.lastUsedAt) : '—'),
+        h('td', { className: 'wide-only' }, u ? ago(u.lastUsedAt) : '—'),
         h('td', {}, stateCell(app, s)));
     }))));
 }

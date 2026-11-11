@@ -30,5 +30,5 @@ export function ago(iso, now = Date.now()) {
 }
 
 export const SOURCE_LABELS = Object.freeze({
-  user: 'User', project: 'Project', synced: 'claude.ai', 'host-plugin': 'CC plugin', 'cc-core': 'cc core', 'cc-plugin': 'cc plugin', convention: 'Convention',
+  user: 'User', project: 'Project', synced: 'claude.ai', 'host-plugin': 'Installed plugin', 'cc-core': 'cc core', 'cc-plugin': 'cc plugin', convention: 'Convention',
 });

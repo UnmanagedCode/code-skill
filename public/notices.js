@@ -26,4 +26,5 @@ export function gitNotice(project, git) {
   return `${project}'s main checkout now has an uncommitted change (${git.path}, ${git.status}): commit it, or cc merges into this project will be refused.`;
 }
 
-export const notice = (kind, ...children) => h('div', { className: `notice notice-${kind}`, role: kind === 'error' ? 'alert' : undefined }, ...children);
+// A notice box; `after` (e.g. a dismiss button) sits beside the text.
+export const notice = (kind, ...children) => h('div', { className: `notice notice-${kind}`, role: kind === 'error' ? 'alert' : undefined }, h('div', { className: 'notice-body' }, ...children));

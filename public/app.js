@@ -127,11 +127,14 @@ function renderTabs() {
 }
 
 function renderNotices() {
-  mount($('status'), state.notices.map((n) => notice(n.kind, h('div', { className: 'notice-body' }, n.children),
-    h('button', {
+  mount($('status'), state.notices.map((n) => {
+    const box = notice(n.kind, n.children);
+    box.appendChild(h('button', {
       type: 'button', className: 'btn btn-ghost btn-small', ariaLabel: 'Dismiss',
       onClick: () => { state.notices = state.notices.filter((x) => x.key !== n.key); renderNotices(); },
-    }, '✕'))));
+    }, '✕'));
+    return box;
+  }));
 }
 
 app.render();
