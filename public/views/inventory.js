@@ -1,7 +1,7 @@
 import { h, mount } from '../dom.js';
 import { api } from '../api.js';
 import { num, tokens, contextLabel, ago, SOURCE_LABELS } from '../format.js';
-import { notice, gitNotice, TOGGLE_NOTICE } from '../notices.js';
+import { notice, gitNotice } from '../notices.js';
 
 const SOURCES = Object.keys(SOURCE_LABELS);
 
@@ -60,7 +60,7 @@ async function toggle(app, skill, enabled) {
   try {
     const res = await api('skills/enabled', { method: 'PUT', body: { ...scopeOf(skill), name: skill.dirName, enabled } });
     const g = skill.source === 'project' ? gitNotice(skill.owner.project, res.git) : null;
-    app.notify(g ? 'warn' : 'info', `${skill.invokeName} ${enabled ? 'enabled' : 'disabled'}. ${TOGGLE_NOTICE}`, g ? h('p', {}, g) : null);
+    if (g) app.notify('warn', h('p', {}, g));
   } catch (e) {
     app.notify('error', `Couldn't ${enabled ? 'enable' : 'disable'} ${skill.invokeName}: ${e.message}`);
   }

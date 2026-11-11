@@ -6,7 +6,7 @@ import { parseMarkdown, renderMarkdown } from '../markdown.js';
 import { costOf } from '../shared/cost.js';
 import { validateSkillName } from '../shared/names.js';
 import { num, tokens, SOURCE_LABELS } from '../format.js';
-import { notice, pickupNotice, gitNotice, projectWriteNotice, TOGGLE_NOTICE } from '../notices.js';
+import { notice, pickupNotice, gitNotice, projectWriteNotice } from '../notices.js';
 import { scopeOf, usageMap } from './inventory.js';
 import { confirmDialog } from './confirm.js';
 import { restore } from './trash.js';
@@ -77,7 +77,7 @@ function toggleControls(app, skill, outcome) {
     try {
       const res = await api('skills/enabled', { method: 'PUT', body: { ...scopeOf(skill), name: skill.dirName, enabled: isOff } });
       const g = project ? gitNotice(project, res.git) : null;
-      app.notify(g ? 'warn' : 'info', `${skill.invokeName} ${isOff ? 'enabled' : 'disabled'}. ${TOGGLE_NOTICE}`, g ? h('p', {}, g) : null);
+      if (g) app.notify('warn', h('p', {}, g));
       await app.loadInventory();
       app.renderPane();
     } catch (e) {

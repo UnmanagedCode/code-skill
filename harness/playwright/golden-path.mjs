@@ -49,6 +49,8 @@ function guard(page) {
 const row = (page, id) => page.locator(`tr[data-id="${id}"]`);
 const pane = (page) => page.getByRole('complementary', { name: 'Skill details' });
 const readJson = async (rel) => JSON.parse(await fs.readFile(fx.roots.p(rel), 'utf8'));
+// A successful toggle shows no notice; the switch and the row's state are the feedback.
+const assertNoToggleNotice = async (page) => assert.equal(await page.getByText(/ (enabled|disabled)\.$/).count(), 0, 'no toggle success notice');
 
 async function openSkill(page, id) {
   await row(page, id).getByRole('button').first().click();
@@ -152,31 +154,34 @@ try {
     await pane(page).getByRole('button', { name: 'Close' }).click();
     const sw = row(page, 'user:~:commit-msg').getByRole('switch');
     await sw.uncheck();
-    await page.getByText('commit-msg disabled.').waitFor();
+    await row(page, 'user:~:commit-msg').getByText('not listed').waitFor();
+    await assertNoToggleNotice(page);
     assert.equal((await readJson('home/.claude/settings.json')).skillOverrides['commit-msg'], 'off');
     assert.equal((await readJson('home/.claude/settings.json')).model, 'opus', 'other keys kept');
-    await row(page, 'user:~:commit-msg').getByText('not listed').waitFor();
     await shot(page, '06-disabled');
     await row(page, 'user:~:commit-msg').getByRole('switch').check();
-    await page.getByText('commit-msg enabled.').waitFor();
+    await row(page, 'user:~:commit-msg').getByText('not listed').waitFor({ state: 'detached' });
+    await assertNoToggleNotice(page);
+    assert.equal(await row(page, 'user:~:commit-msg').getByRole('switch').isChecked(), true);
     assert.equal((await readJson('home/.claude/settings.json')).skillOverrides['commit-msg'], undefined);
 
     // 6b. A claude.ai-synced skill gets the same switch: its namespaced key goes to user settings.
     const syncedId = 'synced:~:skill-creator';
     const syncedKey = 'anthropic-skills:skill-creator';
     await row(page, syncedId).getByRole('switch').uncheck();
-    await page.getByText(`${syncedKey} disabled.`).waitFor();
+    await row(page, syncedId).getByText('not listed').waitFor();
+    await assertNoToggleNotice(page);
     const afterOff = await readJson('home/.claude/settings.json');
     assert.equal(afterOff.skillOverrides[syncedKey], 'off');
     assert.equal(afterOff.model, 'opus', 'other keys kept');
-    await row(page, syncedId).getByText('not listed').waitFor();
     await shot(page, '06b-synced-disabled', true);
     await openSkill(page, syncedId);
     await pane(page).getByRole('button', { name: 'Enable' }).waitFor();
     assert.equal(await pane(page).getByRole('textbox', { name: 'Frontmatter (YAML)' }).count(), 0, 'synced content is not editable');
     await shot(page, '06c-synced-pane');
     await pane(page).getByRole('button', { name: 'Enable' }).click();
-    await page.getByText(`${syncedKey} enabled.`).waitFor();
+    await pane(page).getByRole('button', { name: 'Disable' }).waitFor();
+    await assertNoToggleNotice(page);
     assert.equal((await readJson('home/.claude/settings.json')).skillOverrides[syncedKey], undefined);
     await pane(page).getByRole('button', { name: 'Close' }).click();
 
