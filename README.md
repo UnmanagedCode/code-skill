@@ -13,7 +13,7 @@ UI-only plugin: an Express backend plus a no-build vanilla-JS page. No MCP tools
 ```bash
 npm install
 npm test                                          # node:test suite on fixture roots
-CC_PROJECTS_ROOT=/path/to/projects npm run harness  # Playwright golden path → harness/playwright/screenshots/
+CC_PROJECTS_ROOT=/path/to/projects npm run harness  # Playwright golden path (under /plugins/code-skill/, as in cc) → harness/playwright/screenshots/
 ```
 
 In cc: add this repo as a plugin project, Rescan, enable `code-skill`, then open **Code Skill** in the sidebar (served at `/plugins/code-skill/`).
@@ -41,7 +41,7 @@ CONDUCTOR_PLUGIN_DATA_DIR=/tmp/code-skill-data CONDUCTOR_URL=http://127.0.0.1:87
 3. Exactly the `skillOverrides.<name>` key of `~/.claude/settings.json` (your skills) or `<project>/.claude/settings.local.json` (project skills).
 4. Anything under its data dir.
 
-Project writes change the project's main checkout; the UI warns when that leaves it dirty, because cc refuses worktree merges into a dirty main checkout. Write-safety rules: [docs/architecture.md](docs/architecture.md#write-safety).
+Writes are atomic and keep the existing file's permission bits. Project writes change the project's main checkout; the UI warns when `git status` then reports the path, because cc refuses worktree merges into a dirty main checkout. Write-safety rules: [docs/architecture.md](docs/architecture.md#write-safety).
 
 ## Docs
 
@@ -54,7 +54,9 @@ Project writes change the project's main checkout; the UI warns when that leaves
 - Skills built into the Claude Code binary are not inventoried.
 - Nested `<subdir>/.claude/skills`, `--add-dir` directories and legacy `.claude/commands` are not covered.
 - Project skills are read from and written to main checkouts only, not worktrees.
-- Plugin skills (cc core, cc plugins, conventions, installed plugins, claude.ai-synced) can't be toggled: `skillOverrides` doesn't apply to them.
+- Plugin skills (cc core, cc plugins, conventions, installed plugins) can't be toggled: the CLI ignores `skillOverrides` for them. claude.ai-synced skills are read-only by Code Skill's choice (the CLI does honour `skillOverrides` for them).
+- A skill whose frontmatter `name` differs from its folder name can't be toggled until they match.
+- A `settings.json` / `settings.local.json` that is itself a symlink is read through but never written (an atomic replace would replace the link); toggles answer `SYMLINK_REFUSED` with what to edit by hand. A symlinked `~/.claude` folder is fine.
 - Skills invoked by typing `/name` are not counted; only Skill tool calls are.
 - The trash has no purge.
 - The listing cost formula tracks Claude Code CLI 2.1.319.

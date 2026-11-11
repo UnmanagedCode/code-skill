@@ -2,9 +2,13 @@ import { makeRoots } from './fixtures/roots.mjs';
 import { startFakeConductor } from './fixtures/fakeConductor.mjs';
 import { createServer } from '../src/app.js';
 
-// A fake git probe: every path classifies as `g.status` (settable); records calls.
-export function fakeGit(status = 'untracked') {
-  const g = { calls: [], status, classify: async (projectPath, absPath) => { g.calls.push({ projectPath, absPath }); return g.status; } };
+// A fake git probe: every path classifies as `g.status` and reports `g.dirtyValue` (both settable); records calls.
+export function fakeGit(status = 'untracked', dirty = true) {
+  const g = {
+    calls: [], status, dirtyValue: dirty,
+    classify: async (projectPath, absPath) => { g.calls.push({ projectPath, absPath }); return g.status; },
+    dirty: async () => g.dirtyValue,
+  };
   return g;
 }
 

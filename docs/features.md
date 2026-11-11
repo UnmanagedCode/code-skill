@@ -10,8 +10,8 @@ State lives in the URL: `?tab=usage|trash` (Inventory is the default) and `?skil
 
 - **Listing budget** — the listing that *every* session carries (user, claude.ai-synced, user/managed-scope installed plugins, cc core, cc plugins) against the budget for 200k and 1M contexts plus each distinct `contextWindowTokens` of live cc sessions (tagged "live session"). Budget = context tokens × 4 × 1% chars. Over budget, Claude Code shortens descriptions.
 - **Totals by owner** — skills, chars, ~tokens per owner, and which sessions list them (every session / sessions in a project / a convention namespace's sessions).
-- **Skills table** — invoke name, source, owner, ~tokens, listing state (full / name only / not listed, `cut` when the text passes 1536 chars), uses, last used, state. ⚠ marks warnings, duplicate names and near-duplicates (hover for the notes). Filter box (name, description, owner) and source chips. With the side pane open, owner, listing and last-used columns hide.
-- **State column** — a switch for user and project skills; "read-only" (hover: owner) for everything else; "plugin enabled/disabled" for installed Claude Code plugins. A policy-locked skill's switch is disabled.
+- **Skills table** — click a row (or its name) to open the side pane. Columns: invoke name, source, owner, ~tokens, listing state (full / name only / not listed, `cut` when the text passes 1536 chars), uses, last used, state. ⚠ marks warnings, duplicate names and near-duplicates (hover for the notes). Filter box (name, description, owner) and source chips. With the side pane open, owner, listing and last-used columns hide.
+- **State column** — a switch for user and project skills (disabled, with a tooltip, when the frontmatter `name` differs from the folder name); "read-only" (hover: owner) for everything else; "plugin enabled/disabled" for installed Claude Code plugins. A policy-locked skill's switch is disabled.
 - **Source errors** — a source that fails to load shows a banner; the rest still lists.
 
 ### Usage
@@ -47,10 +47,12 @@ Deleted skills with where they came from and when; **Restore** puts the folder b
 
 ## Toggle semantics
 
-- Disable writes `"off"` for the skill's bare name: into `~/.claude/settings.json` (your skill) or the project's `.claude/settings.local.json` (project skill).
+- Overrides are keyed on the skill's name — frontmatter `name`, else the folder name — as the CLI keys them. When `name` and the folder disagree the skill is flagged and can't be toggled here.
+- Disable writes `"off"` for that name: into `~/.claude/settings.json` (your skill) or the project's `.claude/settings.local.json` (project skill).
 - Enable removes that key; if a lower layer (e.g. your user settings, for a project skill) still turns it off, it writes `"on"` instead.
 - Managed policy (`managed-settings.json`, `managed-settings.d/*.json`, `remote-settings.json`) wins and can't be changed here.
 - `name-only` and `user-invocable-only` values (set via `/skills`) are shown, not offered.
+- Settings files that are symlinks are read through (as the CLI does). Toggling one is refused with an explanation of what to edit by hand, because the atomic write would replace the link. A symlinked `~/.claude` folder works normally.
 
 ## Pickup notices
 
@@ -64,4 +66,4 @@ Deleted skills with where they came from and when; **Restore** puts the folder b
 
 ## Dirty-tree warning
 
-After any project-scope write, the response carries the written path's git status. When it left the main checkout dirty (tracked or untracked-not-ignored; for a delete, tracked), the UI says: commit it, or cc merges into this project will be refused (`PARENT_DIRTY`).
+After any project-scope write, the response carries the written path's git state; `dirty` is whether `git status --porcelain` reports the path (so restoring a committed skill unchanged is clean). When dirty, the UI says: commit it, or cc merges into this project will be refused (`PARENT_DIRTY`).

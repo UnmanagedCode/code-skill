@@ -52,7 +52,14 @@ export async function resolveSkillTarget({ scope, project, name }, { config, con
     if (st?.isSymbolicLink()) refuse('PATH_ESCAPE', 400, `${dotClaude} is a symlink; refusing to write through it`);
     base = path.join(dotClaude, 'skills');
   }
-  if (create) await fs.mkdir(base, { recursive: true });
+  if (create) {
+    try {
+      await fs.mkdir(base, { recursive: true });
+    } catch (e) {
+      if (e.code === 'EEXIST' || e.code === 'ENOTDIR' || e.code === 'ENOENT') refuse('SKILLS_DIR_UNUSABLE', 409, `${base} is not a usable folder (a dangling symlink or a file); fix it by hand first`);
+      throw e;
+    }
+  }
 
   let realRoot;
   let realBase;

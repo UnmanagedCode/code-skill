@@ -18,34 +18,103 @@ export function safeHref(url) {
   }
 }
 
-const INLINE = /(`+)([\s\S]*?[^`])\1(?!`)|\*\*([\s\S]+?)\*\*|__([\s\S]+?)__|\*([^*\s](?:[^*]*[^*\s])?)\*|_([^_\s](?:[^_]*[^_\s])?)_|\[([^\]\n]+)\]\(([^)\s]+)\)/;
+// Nesting beyond this renders as text, keeping recursion (and the stack) bounded.
+const MAX_DEPTH = 16;
 
-export function parseInline(s) {
+// Inline syntax by forward scanning: each closing delimiter is found with
+// indexOf, and a search that failed is remembered, so the parse stays linear
+// on pathological input (long backtick runs, thousands of unclosed "[x](").
+export function parseInline(s, depth = 0) {
   const out = [];
-  let rest = s;
-  while (rest) {
-    const m = INLINE.exec(rest);
-    if (!m) { out.push(text(rest)); break; }
-    if (m.index) out.push(text(rest.slice(0, m.index)));
-    if (m[1]) out.push(el('code', [text(m[2].replace(/^ (.*) $/, '$1'))]));
-    else if (m[3] !== undefined || m[4] !== undefined) out.push(el('strong', parseInline(m[3] ?? m[4])));
-    else if (m[5] !== undefined || m[6] !== undefined) out.push(el('em', parseInline(m[5] ?? m[6])));
-    else {
-      const href = safeHref(m[8]);
-      out.push(href ? el('a', parseInline(m[7]), { href, rel: 'noopener noreferrer', target: '_blank' }) : text(m[0]));
+  let buf = '';
+  const flush = () => { if (buf) { out.push(text(buf)); buf = ''; } };
+  const failed = new Set();            // delimiters with no closer after the current position
+  const find = (needle, from) => {
+    if (failed.has(needle)) return -1;
+    const at = s.indexOf(needle, from);
+    if (at === -1) failed.add(needle);
+    return at;
+  };
+  let i = 0;
+  while (i < s.length) {
+    const c = s[i];
+    if (c === '`') {
+      let n = 1;
+      while (s[i + n] === '`') n++;
+      const run = '`'.repeat(n);
+      let close = find(run, i + n);
+      // The closer must be a run of exactly n backticks.
+      while (close !== -1 && s[close + n] === '`') {
+        let end = close + n;
+        while (s[end] === '`') end++;
+        close = s.indexOf(run, end);
+      }
+      if (close === -1) { failed.add(run); buf += run; i += n; continue; }
+      flush();
+      out.push(el('code', [text(s.slice(i + n, close).replace(/^ (.*) $/s, '$1'))]));
+      i = close + n;
+      continue;
     }
-    rest = rest.slice(m.index + m[0].length);
+    if ((c === '*' || c === '_') && depth < MAX_DEPTH) {
+      const strong = s[i + 1] === c;
+      const delim = strong ? c + c : c;
+      const startAt = i + delim.length;
+      const close = s[startAt] && !/\s/.test(s[startAt]) ? find(delim, startAt + 1) : -1;
+      const inner = close === -1 ? '' : s.slice(startAt, close);
+      if (inner && !/\s$/.test(inner)) {
+        flush();
+        out.push(el(strong ? 'strong' : 'em', parseInline(inner, depth + 1)));
+        i = close + delim.length;
+        continue;
+      }
+      buf += delim;
+      i += delim.length;
+      continue;
+    }
+    if (c === '[' && depth < MAX_DEPTH) {
+      const closeText = find(']', i + 1);
+      if (closeText !== -1 && s[closeText + 1] === '(') {
+        const label = s.slice(i + 1, closeText);
+        const closeUrl = find(')', closeText + 2);
+        const url = closeUrl === -1 ? '' : s.slice(closeText + 2, closeUrl);
+        if (label && !label.includes('\n') && url && !/\s/.test(url)) {
+          const href = safeHref(url);
+          flush();
+          if (href) out.push(el('a', parseInline(label, depth + 1), { href, rel: 'noopener noreferrer', target: '_blank' }));
+          else out.push(text(s.slice(i, closeUrl + 1)));
+          i = closeUrl + 1;
+          continue;
+        }
+      }
+      buf += c;
+      i++;
+      continue;
+    }
+    buf += c;
+    i++;
   }
+  flush();
   return out;
 }
 
 const FENCE = /^\s{0,3}(`{3,}|~{3,})/;
-const HEADING = /^\s{0,3}(#{1,6})\s+(.*?)\s*#*\s*$/;
+const HEADING = /^\s{0,3}(#{1,6})(?:[ \t]+(.*))?$/;
 const HR = /^\s{0,3}([-*_])(\s*\1){2,}\s*$/;
 const QUOTE = /^\s{0,3}>\s?/;
 const ITEM = /^\s{0,3}([-*+]|\d{1,9}[.)])\s+(.*)$/;
 
-export function parseMarkdown(src) {
+// "Title ##" → "Title", by scanning from the end (no backtracking regex).
+function stripClosingHashes(t) {
+  let end = t.length;
+  while (end > 0 && /\s/.test(t[end - 1])) end--;
+  let h = end;
+  while (h > 0 && t[h - 1] === '#') h--;
+  if (h < end && (h === 0 || /\s/.test(t[h - 1]))) end = h;
+  while (end > 0 && /\s/.test(t[end - 1])) end--;
+  return t.slice(0, end);
+}
+
+export function parseMarkdown(src, depth = 0) {
   const lines = String(src).replace(/\r\n?/g, '\n').split('\n');
   const blocks = [];
   let i = 0;
@@ -63,15 +132,15 @@ export function parseMarkdown(src) {
     }
     const heading = HEADING.exec(line);
     if (heading) {
-      blocks.push(el(`h${heading[1].length}`, parseInline(heading[2])));
+      blocks.push(el(`h${heading[1].length}`, parseInline(stripClosingHashes(heading[2] ?? ''))));
       i++;
       continue;
     }
     if (HR.test(line)) { blocks.push(el('hr')); i++; continue; }
-    if (QUOTE.test(line)) {
+    if (QUOTE.test(line) && depth < MAX_DEPTH) {
       const inner = [];
       while (i < lines.length && QUOTE.test(lines[i])) inner.push(lines[i++].replace(QUOTE, ''));
-      blocks.push(el('blockquote', parseMarkdown(inner.join('\n'))));
+      blocks.push(el('blockquote', parseMarkdown(inner.join('\n'), depth + 1)));
       continue;
     }
     const item = ITEM.exec(line);
@@ -88,6 +157,8 @@ export function parseMarkdown(src) {
       continue;
     }
     const para = [];
+    // The first line always joins, so a block the checks above declined (e.g. too-deep quotes) still advances.
+    para.push(lines[i++].trim());
     while (i < lines.length && lines[i].trim() && !FENCE.test(lines[i]) && !HEADING.test(lines[i]) && !HR.test(lines[i]) && !QUOTE.test(lines[i]) && !ITEM.test(lines[i])) {
       para.push(lines[i++].trim());
     }

@@ -53,6 +53,7 @@ table.grid { width: 100%; border-collapse: collapse; }
 .grid .n { text-align: right; font-variant-numeric: tabular-nums; }
 .grid td.owner { white-space: normal; min-width: 8rem; color: var(--muted-foreground); }
 .grid tr.selected td { background: var(--accent); }
+.grid tr.skill-row { cursor: pointer; }
 .grid tbody tr:hover td { background: var(--muted); }
 progress { width: 8rem; height: 0.6rem; vertical-align: middle; accent-color: var(--primary); }
 

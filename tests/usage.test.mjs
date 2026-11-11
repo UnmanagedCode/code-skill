@@ -34,6 +34,7 @@ test('counts assistant Skill tool_use once; blob copies, results and slash comma
   assert.deepEqual(byName(res).review, { invokeName: 'review', count: 3, lastUsedAt: '2026-11-03T10:00:00.000Z', sessions: 3 });
   assert.equal(byName(res)['plugin:x'].count, 1, 'subagent transcript scanned');
   assert.equal(res.skills.length, 2);
+  assert.equal(Object.values(byName(res)).reduce((a, s) => a + s.count, 0), 4, 'the blob copy (own id) is not counted');
   assert.equal(res.scan.files, 3);
   assert.equal(res.scan.malformedLines, 1);
 });

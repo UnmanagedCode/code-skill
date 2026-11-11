@@ -1,8 +1,9 @@
 // Visual-verification golden path (npm run harness). Boots the plugin against
-// fixture roots and the fake cc (boot.mjs), drives inventory → read-only
+// fixture roots and the fake cc (boot.mjs) behind a prefix-stripping proxy, so
+// the page runs under /plugins/code-skill/ as in cc, and drives inventory → read-only
 // detail → hostile skill → create → edit → disable/enable → delete/restore →
 // project write (dirty-tree notice) → usage, then captures the inventory and a
-// detail in dark mode and at 390×844. Writes screenshots/NN-<name>.png. Fails
+// detail in dark mode standalone (no prefix) and at 390×844 embedded. Writes screenshots/NN-<name>.png. Fails
 // on any console error other than the expected standalone 404s, on a
 // CSP violation and on any native dialog.
 import assert from 'node:assert/strict';
@@ -59,6 +60,7 @@ try {
     const bad = guard(page);
     await page.emulateMedia({ colorScheme: 'light' });
     await page.goto(fx.url);
+    assert.equal(new URL(page.url()).pathname, '/plugins/code-skill/');
 
     // 1. Inventory: budget, totals, duplicate and near-duplicate markers.
     await row(page, 'user:~:pdf-tools').waitFor();
@@ -68,12 +70,24 @@ try {
     assert.match(await row(page, 'user:~:pdf-tools').locator('.marker').getAttribute('title'), /similar to pdf-helper/);
     await page.getByText('Never fired').count();
     await row(page, 'user:~:pdf-tools').locator('td').nth(5).getByText('2').waitFor();
+    const mismatch = row(page, 'user:~:renamed-folder');
+    await mismatch.getByRole('button', { name: 'old-name' }).waitFor();
+    assert.ok(await mismatch.getByRole('switch').isDisabled(), 'name ≠ folder: toggle disabled');
     await shot(page, '01-inventory', true);
 
-    // 2. Read-only cc core skill: owned-by badge, no editor.
-    await openSkill(page, 'cc-core:code-conductor:scripting');
+    // 2. Read-only cc core skill, opened by clicking its row (not the name): owned-by badge, no editor.
+    await row(page, 'cc-core:code-conductor:scripting').locator('td.owner').click();
+    await pane(page).getByRole('heading', { name: 'code-conductor:scripting' }).waitFor();
     await pane(page).getByText('Read-only: owned by code-conductor (core)').waitFor();
     await pane(page).getByText('Fixed per session at creation').waitFor();
+    assert.ok(new URL(page.url()).pathname.startsWith('/plugins/code-skill/'), 'URL state stays under the prefix');
+    // With the pane open the skills table hides columns; every body row must still line up with the header.
+    const misaligned = await page.locator('table.skills').evaluate((table) => {
+      const lefts = (row) => [...row.cells].filter((c) => c.getClientRects().length).map((c) => Math.round(c.getBoundingClientRect().left));
+      const head = lefts(table.tHead.rows[0]);
+      return [...table.tBodies[0].rows].filter((r) => lefts(r).join() !== head.join()).map((r) => r.dataset.id);
+    });
+    assert.deepEqual(misaligned, [], 'skills table rows align with the header');
     assert.equal(await pane(page).getByRole('textbox', { name: 'Frontmatter (YAML)' }).count(), 0);
     await shot(page, '02-readonly-detail');
 
@@ -176,11 +190,11 @@ try {
   }, { headless: true, viewport: DESKTOP });
 
   // Dark desktop, and light/dark mobile: inventory and a detail.
-  for (const [label, viewport, scheme] of [['dark', DESKTOP, 'dark'], ['mobile-light', MOBILE, 'light'], ['mobile-dark', MOBILE, 'dark']]) {
+  for (const [label, viewport, scheme, url] of [['dark', DESKTOP, 'dark', fx.standaloneUrl], ['mobile-light', MOBILE, 'light', fx.url], ['mobile-dark', MOBILE, 'dark', fx.url]]) {
     await withPage(async (page) => {
       const bad = guard(page);
       await page.emulateMedia({ colorScheme: scheme });
-      await page.goto(fx.url);
+      await page.goto(url);
       await row(page, 'user:~:pdf-tools').waitFor();
       assert.equal(await page.evaluate(() => document.documentElement.classList.contains('dark')), scheme === 'dark');
       assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth), 'no page-level horizontal overflow');

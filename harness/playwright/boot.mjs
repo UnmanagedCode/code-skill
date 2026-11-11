@@ -4,6 +4,7 @@
 // plugin, convention skills for two sessions, transcripts with usage, and a
 // hostile skill. Every path the server sees is inside the fixture.
 import { execFileSync } from 'node:child_process';
+import http from 'node:http';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { loadHarness } from './codePlaywright.mjs';
@@ -27,6 +28,7 @@ export const FIXTURE_FILES = {
   'home/.claude/skills/release-notes/SKILL.md': skillMd('release-notes', 'Draft release notes from merged pull requests since the last tag'),
   'home/.claude/skills/hostile/SKILL.md': skillMd('hostile', 'Renders <img src=x onerror=alert(1)> safely', { body: HOSTILE_BODY }),
   'home/.claude/skills/terse/SKILL.md': skillMd('terse', 'Answer in as few words as possible'),
+  'home/.claude/skills/renamed-folder/SKILL.md': skillMd('old-name', 'Its frontmatter name disagrees with its folder'),
   'home/.claude/skills/long-winded/SKILL.md': skillMd('long-winded', `${'A very long description that keeps going. '.repeat(45)}`),
   'home/.claude/settings.json': { model: 'opus', skillOverrides: { terse: 'name-only' } },
   'home/.claude.json': { oauthAccount: { organizationUuid: ORG, accountUuid: ACCT } },
@@ -56,6 +58,32 @@ export const FIXTURE_FILES = {
   'projects/.code-conductor/claude-config/box/.claude/projects/-w/s2.jsonl': lines(skillCall({ id: 'u5', skill: 'anthropic-skills:skill-creator', ts: days(5), sessionId: 's2' })),
 };
 
+export const EMBED_PREFIX = '/plugins/code-skill';
+
+// A stand-in for cc's plugin proxy: serves the backend under EMBED_PREFIX with
+// the prefix stripped; every other path (cc's own, incl. the two host URLs) is a 404.
+export async function startPrefixProxy(targetUrl) {
+  const target = new URL(targetUrl);
+  const server = http.createServer((req, res) => {
+    if (req.url === EMBED_PREFIX) {
+      res.writeHead(301, { location: `${EMBED_PREFIX}/` });
+      return res.end();
+    }
+    if (!req.url.startsWith(`${EMBED_PREFIX}/`)) {
+      res.writeHead(404, { 'content-type': 'text/plain' });
+      return res.end('not found (outside the plugin prefix)');
+    }
+    const upstream = http.request({ hostname: target.hostname, port: target.port, method: req.method, path: req.url.slice(EMBED_PREFIX.length), headers: req.headers }, (up) => {
+      res.writeHead(up.statusCode, up.headers);
+      up.pipe(res);
+    });
+    upstream.on('error', (e) => { res.writeHead(502); res.end(String(e)); });
+    req.pipe(upstream);
+  });
+  await new Promise((r) => server.listen(0, '127.0.0.1', r));
+  return { url: `http://127.0.0.1:${server.address().port}${EMBED_PREFIX}/`, close: () => new Promise((r) => server.close(r)) };
+}
+
 export async function bootFixture() {
   const roots = await makeRoots(null, { files: FIXTURE_FILES });
   execFileSync('git', ['-C', roots.p('projects/projA'), 'init', '-q']);
@@ -72,9 +100,12 @@ export async function bootFixture() {
   const env = roots.env(fake.url);
   // CLAUDE_CONFIG_DIR unset so HOME/.claude applies, as on the host.
   const srv = await bootServer({ cwd: REPO_ROOT, entry: 'server.js', env: { ...env, CLAUDE_CONFIG_DIR: '' }, silent: true });
+  const proxy = await startPrefixProxy(srv.url);
   return {
-    roots, fake, srv, url: srv.url,
+    // `url`: the page as cc embeds it (under /plugins/code-skill/); `standaloneUrl`: the backend directly.
+    roots, fake, srv, url: proxy.url, standaloneUrl: `${srv.url}/`,
     async close() {
+      await proxy.close();
       await srv.close();
       await fake.close();
       const { rm } = await import('node:fs/promises');

@@ -4,10 +4,12 @@ export const skillCall = ({ id, skill, ts = '2026-11-01T10:00:00.000Z', sessionI
   message: { role: 'assistant', content: [{ type: 'text', text: 'ok' }, { type: 'tool_use', id, name: 'Skill', input: { skill } }] },
 });
 
-// The same tool_use copied into an api-request-blob record.
+// The same call copied into an api-request-blob record. It carries a message.content
+// tool_use shaped exactly like the assistant one, under a distinct id, so only the
+// record-type check keeps it out of the counts.
 export const blobCopy = ({ id, skill }) => JSON.stringify({
-  type: 'api-request-blob', timestamp: '2026-11-01T10:00:01.000Z',
-  request: { messages: [{ role: 'assistant', content: [{ type: 'tool_use', id, name: 'Skill', input: { skill } }] }] },
+  type: 'api-request-blob', timestamp: '2026-11-01T10:00:01.000Z', sessionId: 'sess-blob',
+  message: { role: 'assistant', content: [{ type: 'tool_use', id: `${id}-blob`, name: 'Skill', input: { skill } }] },
 });
 
 export const skillResult = ({ id, skill }) => JSON.stringify({

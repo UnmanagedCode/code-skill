@@ -61,6 +61,32 @@ test('cc unreachable → 502 CONDUCTOR_UNREACHABLE', async (t) => {
   assert.equal(res.body.code, 'CONDUCTOR_UNREACHABLE');
 });
 
+// Invariant: a disabled installed plugin's skills cost nothing and stay out of the every-session budget; an enabled one counts.
+test('disabled host plugin → hidden, 0 chars, not in budget.baseline; enabled one is counted', async (t) => {
+  const plug = (dir, ns, skill) => ({
+    [`home/.claude/plugins/cache/${dir}/.claude-plugin/plugin.json`]: { name: ns },
+    [`home/.claude/plugins/cache/${dir}/skills/${skill}/SKILL.md`]: skillMd(skill, `${skill} does useful things`),
+  });
+  const app = await boot(t, { files: {
+    'home/.claude/skills/solo/SKILL.md': skillMd('solo', 'Only mine'),
+    'home/.claude/plugins/installed_plugins.json': { version: 2, plugins: {
+      'on@mkt': [{ scope: 'user', installPath: '__ROOT__/home/.claude/plugins/cache/on' }],
+      'off@mkt': [{ scope: 'user', installPath: '__ROOT__/home/.claude/plugins/cache/off' }],
+    } },
+    ...plug('on', 'onplug', 'yes'), ...plug('off', 'offplug', 'nope'),
+    'home/.claude/settings.json': { enabledPlugins: { 'on@mkt': true } },
+  } });
+  const { body: inv } = await app.json('GET', '/api/inventory');
+  const off = inv.skills.find((s) => s.invokeName === 'offplug:nope');
+  const on = inv.skills.find((s) => s.invokeName === 'onplug:yes');
+  const solo = inv.skills.find((s) => s.id === 'user:~:solo');
+  assert.deepEqual([off.enabled, off.cost.listing, off.cost.chars, off.cost.tokens], [false, 'hidden', 0, 0]);
+  assert.equal(on.cost.listing, 'full');
+  assert.equal(inv.budget.baseline.count, 2, 'solo + the enabled plugin skill');
+  assert.equal(inv.budget.baseline.chars, solo.cost.chars + on.cost.chars + 1);
+  assert.equal(inv.totals.find((x) => x.key === 'host-plugin:off@mkt').chars, 0);
+});
+
 // Invariant: the budget is shown for 200k and 1M plus every live session's context size.
 test('budget contexts: 200k, 1M and live contextWindowTokens; baseline = every-session sources', async (t) => {
   const app = await boot(t, { files: FILES }, { conductor: { instances: [{ id: 'a', contextWindowTokens: 1_000_000 }, { id: 'b', contextWindowTokens: 500_000 }, { id: 'c' }] } });

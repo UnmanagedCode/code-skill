@@ -12,12 +12,17 @@ const lstatOrNull = async (p) => {
   try { return await fs.lstat(p); } catch (e) { if (e.code === 'ENOENT') return null; throw e; }
 };
 
-// Reads a settings JSON file. A missing file is { exists:false, obj:{} }.
-// → { exists, obj, text, stat }; refuses SETTINGS_UNPARSEABLE / SETTINGS_SHAPE / SYMLINK_REFUSED.
+const statOrNull = async (p) => {
+  try { return await fs.stat(p); } catch (e) { if (e.code === 'ENOENT') return null; throw e; }
+};
+
+// Reads a settings JSON file, following symlinks (as the CLI does). A missing
+// file is { exists:false, obj:{} }. → { exists, obj, text, stat }
+// Refuses SETTINGS_UNPARSEABLE / SETTINGS_SHAPE, or SETTINGS_SHAPE when the path isn't a file.
 export async function readSettingsObject(file) {
-  const stat = await lstatOrNull(file);
+  const stat = await statOrNull(file);
   if (!stat) return { exists: false, obj: {}, text: null, stat: null };
-  if (stat.isSymbolicLink() || !stat.isFile()) refuse('SYMLINK_REFUSED', 400, `${file} is not a regular file`);
+  if (!stat.isFile()) refuse('SETTINGS_SHAPE', 409, `${file} is not a regular file`);
   const text = await fs.readFile(file, 'utf8');
   let obj;
   try {
@@ -46,16 +51,25 @@ const sameStat = (a, b) => (a === null && b === null) || (a && b && a.mtimeMs ==
 export async function setSkillOverride(file, name, value, { containRoot, hooks = {} } = {}) {
   if (value !== undefined && !OVERRIDE_VALUES.includes(value)) throw new Error(`bad skillOverrides value ${value}`);
   const dir = path.dirname(file);
-  const dirStat = await lstatOrNull(dir);
-  if (dirStat?.isSymbolicLink()) refuse('SYMLINK_REFUSED', 400, `${dir} is a symlink; refusing to write through it`);
-  if (!dirStat) await fs.mkdir(dir, { recursive: true });
+  // A symlinked folder (e.g. ~/.claude into a dotfiles repo) is fine: containment below checks where it really is.
+  try {
+    await fs.mkdir(dir, { recursive: true });
+  } catch (e) {
+    if (e.code === 'EEXIST' || e.code === 'ENOTDIR' || e.code === 'ENOENT') refuse('SETTINGS_SHAPE', 409, `${dir} is not a usable folder (a file or a dangling symlink)`);
+    throw e;
+  }
+  // The file itself must not be a symlink: the atomic write renames a new file over the path, which would replace the link.
+  if ((await lstatOrNull(file))?.isSymbolicLink()) {
+    refuse('SYMLINK_REFUSED', 409, `${file} is a symlink (for example into a dotfiles repo). Code Skill writes settings by atomically replacing the file, which would replace your link with a plain file, so it won't. ${value === undefined ? `Remove "${name}" from "skillOverrides"` : `Set "skillOverrides": {"${name}": "${value}"}`} in the file the link points to, by hand.`);
+  }
   if (containRoot) {
     const rel = path.relative(await fs.realpath(containRoot), await fs.realpath(dir));
     if (rel.startsWith('..') || path.isAbsolute(rel)) refuse('PATH_ESCAPE', 400, `${dir} resolves outside ${containRoot}`);
   }
 
   for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt++) {
-    const { exists, obj, text, stat } = await readSettingsObject(file);
+    const before = await lstatOrNull(file);
+    const { exists, obj, text } = await readSettingsObject(file);
     const current = obj.skillOverrides?.[name];
     if (current === value) return { changed: false };
     if (value === undefined) {
@@ -70,7 +84,7 @@ export async function setSkillOverride(file, name, value, { containRoot, hooks =
       await writeFileAtomic(file, out, {
         beforeRename: async () => {
           if (hooks.beforeCommit) await hooks.beforeCommit(attempt);
-          if (!sameStat(stat, await lstatOrNull(file))) {
+          if (!sameStat(before, await lstatOrNull(file))) {
             raced = true;
             throw new Error('settings file changed during write');
           }

@@ -74,3 +74,50 @@ test('a forged AST node with a disallowed tag or href renders inert', () => {
   assert.deepEqual(els.map((e) => e.tagName), ['DIV', 'A']);
   assert.equal(els[1].href, undefined);
 });
+
+// Generous bound: linear parsing takes milliseconds here; the old regex took seconds on the smaller inputs.
+const BOUND_MS = 1500;
+const PATHOLOGICAL = {
+  '8,000 backticks': '`'.repeat(8000),
+  '100k "[x]("': '[x]('.repeat(100_000),
+  '100k "["': '['.repeat(100_000),
+  '100k "*"': '*'.repeat(100_000),
+  '50k "_a"': '_a'.repeat(50_000),
+  '50k "**a"': '**a'.repeat(50_000),
+  'mixed runs': '` `` ``` [a](b *c _d **e '.repeat(20_000),
+  'heading of spaces': `# ${' '.repeat(200_000)}x`,
+  '50k nested quotes': '>'.repeat(50_000),
+};
+
+// Invariant: the preview can't freeze the page — parsing is near-linear on hostile input.
+for (const [label, input] of Object.entries(PATHOLOGICAL)) {
+  test(`pathological input parses fast: ${label}`, () => {
+    const t0 = performance.now();
+    const ast = parseMarkdown(input);
+    const ms = performance.now() - t0;
+    assert.ok(ms < BOUND_MS, `${label}: ${Math.round(ms)} ms`);
+    assert.ok(Array.isArray(ast));
+  });
+}
+
+test('1 MB of realistic prose parses fast and keeps its structure', () => {
+  const para = 'Use **this skill** when the user asks about `config files`, *YAML* front matter or [the docs](https://example.com/docs). Keep answers short_and_clear.';
+  const unit = `## Section\n\n${para}\n\n- item one with \`code\`\n- item [two](https://example.com)\n\n> a quote\n\n\`\`\`\nconst x = 1;\n\`\`\`\n\n`;
+  const input = unit.repeat(Math.ceil(1_000_000 / unit.length));
+  const t0 = performance.now();
+  const ast = parseMarkdown(input);
+  assert.ok(performance.now() - t0 < BOUND_MS * 2);
+  assert.equal(ast.filter((n) => n.tag === 'h2').length, Math.ceil(1_000_000 / unit.length));
+  assert.ok(ast.some((n) => n.tag === 'p' && n.children.some((c) => c.tag === 'a')));
+});
+
+test('inline basics still parse after the linear rewrite', () => {
+  const tags = (s) => parseMarkdown(s)[0].children.map((n) => (n.type === 'el' ? n.tag : `"${n.value}"`));
+  assert.deepEqual(tags('a `b` c'), ['"a "', 'code', '" c"']);
+  assert.deepEqual(tags('``a ` b``'), ['code']);
+  assert.equal(parseMarkdown('``a ` b``')[0].children[0].children[0].value, 'a ` b');
+  assert.deepEqual(tags('**s** *e* __u__ _v_'), ['strong', '" "', 'em', '" "', 'strong', '" "', 'em']);
+  assert.deepEqual(tags('unclosed `tick and * star'), ['"unclosed `tick and * star"']);
+  assert.deepEqual(parseMarkdown('# Title ##')[0].children, [{ type: 'text', value: 'Title' }]);
+  assert.deepEqual(parseMarkdown('# C#')[0].children, [{ type: 'text', value: 'C#' }]);
+});

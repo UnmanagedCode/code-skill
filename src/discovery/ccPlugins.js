@@ -54,7 +54,7 @@ export async function discover({ conductor, localProjects, warn }) {
       continue;
     }
     const dirs = await listSkillDirs(path.join(root, 'skills'));
-    out.push(...await readAll(dirs, { source: 'cc-plugin', ownerKey: row.id, owner: { label: `cc plugin ${row.id}`, plugin: row.id, namespace }, namespace }));
+    out.push(...await readAll(dirs, { source: 'cc-plugin', ownerKey: row.id, owner: { label: `cc plugin ${row.id}`, plugin: row.id, namespace }, namespace }, warn));
   }
   return out;
 }

@@ -11,5 +11,5 @@ export async function discover({ config, warn }) {
     return [];
   }
   const dirs = await listSkillDirs(path.join(config.coreDir, 'skills'));
-  return readAll(dirs, { source: 'cc-core', ownerKey: namespace, owner: { label: 'code-conductor (core)', namespace }, namespace });
+  return readAll(dirs, { source: 'cc-core', ownerKey: namespace, owner: { label: 'code-conductor (core)', namespace }, namespace }, warn);
 }

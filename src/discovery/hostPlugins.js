@@ -48,7 +48,7 @@ export async function discover({ config, warn }) {
       const label = `Claude Code plugin ${key}${projectScoped ? ` (${inst.scope}: ${inst.projectPath})` : ''}`;
       const recs = await readAll(await listSkillDirs(path.join(inst.installPath, 'skills')), {
         source: 'host-plugin', ownerKey, owner: { label, plugin: key, namespace, scope: inst.scope ?? 'user' }, namespace,
-      });
+      }, warn);
       for (const r of recs) r.enabled = enabled;
       out.push(...recs);
     }

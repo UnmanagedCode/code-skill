@@ -47,7 +47,7 @@ export async function buildInventory({ config, conductor }) {
   const layers = await readLayers(config, local);
   sourceErrors.push(...layers.errors);
   for (const r of skills) {
-    if (r.toggleable) r.override = effectiveFor(r, layers);
+    if (r.writable) r.override = effectiveFor(r, layers);
     const effective = r.override?.effective ?? 'on';
     const listing = r.source === 'host-plugin' && !r.enabled ? 'hidden' : listingFor(effective, r.disableModelInvocation);
     r.cost = costOf({ invokeName: r.invokeName, description: r.description, whenToUse: r.whenToUse, listing });

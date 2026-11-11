@@ -78,3 +78,26 @@ test('an injected rename failure leaves the original and no .tmp', async (t) => 
   assert.equal(await fs.readFile(file, 'utf8'), 'original');
   assert.deepEqual(await fs.readdir(roots.p('home/.claude/skills/a')), ['SKILL.md']);
 });
+
+// Invariant: a create refused for its input makes no folders at all.
+test('a refused project create leaves no .claude folder behind', async (t) => {
+  const app = await boot(t);
+  for (const body of [
+    { scope: 'project', project: 'projB', name: 'ok-name', description: '', body: '' },
+    { scope: 'project', project: 'projB', name: 'Bad Name', description: 'd', body: '' },
+    { scope: 'project', project: 'projB', name: 'ok-name', description: 'd', body: 42 },
+  ]) {
+    const res = await app.json('POST', '/api/skills', body);
+    assert.equal(res.status, 400, JSON.stringify(res.body));
+    await assert.rejects(fs.access(app.roots.p('projects/projB/.claude')));
+  }
+});
+
+// Invariant: a dangling skills symlink is a clean refusal, not a 500, and nothing is created.
+test('create through a dangling ~/.claude/skills symlink → SKILLS_DIR_UNUSABLE', async (t) => {
+  const app = await boot(t, { symlinks: { 'home/.claude/skills': 'nowhere/skills' } });
+  const res = await app.json('POST', '/api/skills', { scope: 'user', name: 'a', description: 'd', body: '' });
+  assert.equal(res.status, 409);
+  assert.equal(res.body.code, 'SKILLS_DIR_UNUSABLE');
+  await assert.rejects(fs.access(app.roots.p('nowhere')));
+});

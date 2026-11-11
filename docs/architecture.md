@@ -5,7 +5,7 @@
 ## Layout
 
 ```
-server.js                 entry: loadConfig(process.env), mkdir dataDir, listen
+server.js                 entry (runs only when executed directly): loadConfig(process.env), mkdir dataDir, listen
 src/config.js             loadConfig(env) — the only reader of env in src/
 src/app.js                createApp(config, deps) / createServer; deps = {conductor, git, usage}, real ones when omitted
 src/conductorClient.js    cc REST client (unreachable → Refusal CONDUCTOR_UNREACHABLE)
@@ -51,7 +51,8 @@ The inventory is computed per request (no cache). A thrown source error becomes 
 - **host-plugin** — `<claudeDir>/plugins/installed_plugins.json` (`version: 2`). Namespace = `<installPath>/.claude-plugin/plugin.json` `name`, else the key before `@`. `enabled` = `enabledPlugins[key] === true` in user settings (user/managed scope) or the entry's project `settings.json` / `settings.local.json` (project / local scope).
 - **cc-core** — `<coreDir>/skills`, namespace from its plugin.json.
 - **cc-plugin** — `/api/plugins` rows with `enabled && system === 'local' && errors.length === 0`; checkout = the project's path, or the `/worktrees` row matching `activeVersion.name`; root = `claudePlugin` from its `conductor.plugin.json`, which must stay inside the checkout; skipped (with a source error) without `.claude-plugin/plugin.json`.
-- **convention** — `<storeDir>/convention-skills/*/*/` with a plugin.json; merged by (invokeName, sha256); sessions labelled from `/api/instances` (`displayLabel`, else `title`), else "(no instance row)".
+- Every source reads its SKILL.md files through `readAll`, which reports an unreadable one as a source error and skips just it.
+- **convention** — `<storeDir>/convention-skills/*/*/` with a plugin.json (a broken one skips just that namespace); merged by (invokeName, sha256); sessions labelled from `/api/instances` (`displayLabel`, else `title`), else "(no instance row)".
 
 ## Override layers
 
@@ -67,22 +68,24 @@ Read fresh per request (`readLayers`), merged later-wins: user `<claudeDir>/sett
 
 ## Trash
 
-`<dataDir>/trash/<trashId>/skill/` (the moved folder) and `meta.json` (`TrashMeta`). `trashId` = `<epochMs>-<8 hex>`. Moves use `rename`, falling back on `EXDEV` to recursive copy (symlinks verbatim) then remove. Restore re-runs every containment check for the original scope/project/name. The `skillOverrides` key is left as it was on delete.
+`<dataDir>/trash/<trashId>/skill/` (the moved folder) and `meta.json` (`TrashMeta`). `trashId` = `<epochMs>-<8 hex>`. `inspectEntry` checks an entry before listing or restoring it: entry and `skill/` are real directories (no symlinks) whose real paths lie inside the real trash folder, `meta.json` is a regular file holding an object with `name` and `scope`; a symlink → `SYMLINK_REFUSED`, anything else malformed → `NOT_FOUND`, and the listing skips it. Moves use `rename`, falling back on `EXDEV` to recursive copy (symlinks verbatim) then remove. Restore re-runs every containment check for the original scope/project/name. The `skillOverrides` key is left as it was on delete.
 
 ## Write safety
 
 - **Names** — `validateSkillName` (`shared/names.js`): `NAME_RE`, minus `RESERVED_NAMES`.
 - **Projects** — must be a `/api/projects` row with that exact name and `system === 'local'`.
 - **Containment** (`resolveSkillTarget`) — base = `<claudeDir>/skills` or `<project>/.claude/skills`; a symlinked `<project>/.claude` is refused; `realpath(base)` must be inside `realpath(owner root)`; the skill folder must be a real directory directly under it; `SKILL.md` a regular file.
-- **Settings** (`setSkillOverride`) — file must be regular or missing, its folder inside the owner root; parse failure / non-object → refuse with the file untouched; only `skillOverrides[name]` changes; indent detected and kept; the read-modify-write re-checks the file's stat just before rename and retries up to 3 times, then `SETTINGS_BUSY`.
-- **Atomic writes** — temp file `.<base>.<rand>.tmp` (exclusive create), fsync, rename; temp removed on failure.
+- **Settings** (`setSkillOverride`) — reads follow symlinks; a write refuses a settings *file* that is a symlink (`SYMLINK_REFUSED`, the rename would replace the link) but accepts a symlinked folder whose real path is inside the owner root; parse failure / non-object → refuse with the file untouched; only `skillOverrides[name]` changes; indent detected and kept; the read-modify-write re-checks the file's stat just before rename and retries up to 3 times, then `SETTINGS_BUSY`.
+- **Atomic writes** — temp file `.<base>.<rand>.tmp` (exclusive create, the existing file's mode), fsync, rename; temp removed on failure.
+- **Create order** — scope, name, body and description are checked before `resolveSkillTarget` makes the skills folder; a dangling or non-folder skills path is `SKILLS_DIR_UNUSABLE`.
 - **Edits** — `baseEtag` must match the current bytes (`STALE`); frontmatter is written verbatim (`composeSkillMd`).
-- **Git** — after project writes, `git -C <project> ls-files --error-unmatch -- <rel>`, then `check-ignore -q`, via `execFile`.
+- **Git** — after project writes: `ls-files --error-unmatch` then `check-ignore -q` for `status`, `status --porcelain --untracked-files=all` for `dirty`. Always `execFile('git', ['-C', project, '-c', 'core.fsmonitor=', '-c', 'core.untrackedCache=false', …])` with `GIT_OPTIONAL_LOCKS=0`, so repo config can't start a hook program.
 
 ## Frontend safety
 
 - Only `public/dom.js` creates nodes: `h(tag, props, ...children)`; props from an allowlist, handlers only as functions, strings only as text nodes.
-- `public/markdown.js` is the only place an `href` is set, through `safeHref` (http, https, mailto).
+- `public/markdown.js` is the only place an `href` is set, through `safeHref` (http, https, mailto). Its inline parser scans forward with `indexOf` and remembers failed delimiter searches, so it stays near-linear on hostile input; nesting deeper than `MAX_DEPTH` renders as text.
+- Module specifiers are relative and must stay under the plugin prefix when embedded (`tests/frontendImports.test.mjs` resolves each against `/plugins/code-skill/`).
 - `public/api.js` is the only `fetch` call site and refuses root-relative paths.
 - `tests/frontendSafety.test.mjs` bans HTML sinks, `eval`, `setAttribute`, inline style, location assignment and stray `fetch`/`href` across `public/` and `shared/`; each rule carries a sample it must flag.
 
@@ -94,4 +97,4 @@ Read fresh per request (`readLayers`), merged later-wins: user `<claudeDir>/sett
 - `tests/fixtures/transcripts.mjs` — record builders matching the CLI's shapes; `fakeDoc.mjs` — a trapping fake document.
 - `tests/helpers.mjs` — `boot(t, spec, {conductor, git})` (app on port 0 with a fake git probe) and `depsFor`.
 - `tests/testIsolation.test.mjs` keeps tests and the harness off the real home and `server.js`.
-- Harness: `harness/playwright/boot.mjs` builds a rich fixture (including a git-initialised project and a hostile skill) and spawns `server.js` with fixture env only; `golden-path.mjs` drives the UI and writes `harness/playwright/screenshots/`.
+- Harness: `harness/playwright/boot.mjs` builds a rich fixture (including a git-initialised project and a hostile skill), spawns `server.js` with fixture env only, and fronts it with `startPrefixProxy`, a stand-in for cc's proxy serving it under `/plugins/code-skill/` (everything else 404). `golden-path.mjs` drives the UI there (one pass standalone) and writes `harness/playwright/screenshots/`.

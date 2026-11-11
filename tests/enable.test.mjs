@@ -61,3 +61,33 @@ test('a missing skill → 404; a read-only source → 403', async (t) => {
   assert.equal((await app.json('PUT', '/api/skills/enabled', { scope: 'cc-core', name: 'mine', enabled: false })).status, 403);
   assert.equal((await app.json('PUT', '/api/skills/enabled', { scope: 'user', name: 'mine', enabled: 'no' })).status, 400);
 });
+
+// Invariant: overrides and the invoke name follow the frontmatter name (as the CLI does); a name that
+// disagrees with its folder is flagged and can't be toggled.
+test('frontmatter name ≠ folder: keyed on the name, flagged, toggle refused with NAME_MISMATCH', async (t) => {
+  const app = await boot(t, { files: {
+    'home/.claude/skills/folder/SKILL.md': skillMd('declared', 'Mismatched'),
+    'home/.claude/settings.json': { skillOverrides: { declared: 'off', folder: 'on' } },
+  } });
+  const s = (await app.json('GET', '/api/inventory')).body.skills.find((x) => x.id === 'user:~:folder');
+  assert.equal(s.invokeName, 'declared');
+  assert.equal(s.override.effective, 'off', 'read from the "declared" key, not the folder key');
+  assert.equal(s.cost.listing, 'hidden');
+  assert.equal(s.toggleable, false);
+  assert.ok(s.warnings.some((w) => /≠ directory "folder".*enable\/disable is off/.test(w)));
+  const before = await fs.readFile(app.roots.p('home/.claude/settings.json'));
+  const res = await app.json('PUT', '/api/skills/enabled', { scope: 'user', name: 'folder', enabled: true });
+  assert.equal(res.status, 409);
+  assert.equal(res.body.code, 'NAME_MISMATCH');
+  assert.deepEqual(await fs.readFile(app.roots.p('home/.claude/settings.json')), before);
+});
+
+test('frontmatter without a name falls back to the folder name', async (t) => {
+  const app = await boot(t, { files: {
+    'home/.claude/skills/bare/SKILL.md': '---\ndescription: no name\n---\n\nbody\n',
+    'home/.claude/settings.json': { skillOverrides: { bare: 'name-only' } },
+  } });
+  const s = (await app.json('GET', '/api/inventory')).body.skills.find((x) => x.id === 'user:~:bare');
+  assert.deepEqual([s.invokeName, s.toggleable, s.override.effective], ['bare', true, 'name-only']);
+  assert.equal((await app.json('PUT', '/api/skills/enabled', { scope: 'user', name: 'bare', enabled: false })).status, 200);
+});

@@ -1,4 +1,5 @@
 import { OVERRIDE_VALUES } from './settingsFile.js';
+import { skillNameOf } from '../discovery/record.js';
 
 // The layer chain that applies to a skill, in merge order (later wins).
 export function chainFor(record, layers) {
@@ -12,9 +13,10 @@ const valueIn = (layer, name) => {
   return OVERRIDE_VALUES.includes(v) ? v : undefined;
 };
 
-// → { effective, layers[], lockedByPolicy, otherProjects? } for a user or project skill.
+// → { effective, layers[], lockedByPolicy, otherProjects? } for a user or project skill,
+// keyed (like the CLI) on the skill's name.
 export function effectiveFor(record, layers) {
-  const name = record.dirName;
+  const name = skillNameOf(record);
   const set = [];
   for (const layer of chainFor(record, layers)) {
     const value = valueIn(layer, name);

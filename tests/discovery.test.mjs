@@ -178,3 +178,36 @@ test('convention: identical copies merge with their sessions; differing content 
   assert.equal(merged.invokeName, 'cc-conductor:review');
   assert.deepEqual([merged.writable, merged.toggleable], [false, false]);
 });
+
+// Invariant: one broken entry is reported and skipped; the rest of its source still lists.
+test('convention: a bad plugin.json in one namespace skips only that namespace', async (t) => {
+  const base = 'projects/.code-conductor/convention-skills/i1';
+  const { records, warnings } = await run(t, convention, { files: {
+    [`${base}/good/.claude-plugin/plugin.json`]: plugin('cc-good'),
+    [`${base}/good/skills/ok/SKILL.md`]: skillMd('ok', 'fine'),
+    [`${base}/bad/.claude-plugin/plugin.json`]: '{not json',
+    [`${base}/bad/skills/lost/SKILL.md`]: skillMd('lost', 'x'),
+  } });
+  assert.deepEqual(names(records), ['cc-good:ok']);
+  assert.equal(warnings.length, 1);
+  assert.match(warnings[0].message, /bad/);
+});
+
+test('an unreadable SKILL.md is reported and skipped; its neighbours still list', { skip: process.getuid?.() === 0 && 'root reads anything' }, async (t) => {
+  const env = await depsFor(t, { files: {
+    'home/.claude/skills/fine/SKILL.md': skillMd('fine', 'ok'),
+    'home/.claude/skills/locked/SKILL.md': skillMd('locked', 'x'),
+    'projects/.code-conductor/convention-skills/i1/cc-x/.claude-plugin/plugin.json': plugin('cc-x'),
+    'projects/.code-conductor/convention-skills/i1/cc-x/skills/fine/SKILL.md': skillMd('fine', 'ok'),
+    'projects/.code-conductor/convention-skills/i1/cc-x/skills/locked/SKILL.md': skillMd('locked', 'x'),
+  } });
+  const { chmod } = await import('node:fs/promises');
+  await chmod(env.roots.p('home/.claude/skills/locked/SKILL.md'), 0);
+  await chmod(env.roots.p('projects/.code-conductor/convention-skills/i1/cc-x/skills/locked/SKILL.md'), 0);
+  for (const [mod, expected] of [[hostUser, ['fine']], [convention, ['cc-x:fine']]]) {
+    const warnings = [];
+    assert.deepEqual(names(await mod.discover(ctxOf(env, warnings))), expected);
+    assert.equal(warnings.length, 1);
+    assert.match(warnings[0].message, /locked\/SKILL\.md/);
+  }
+});

@@ -25,7 +25,7 @@ export async function makeRoots(t, spec = {}) {
     await fs.writeFile(p(rel), text.replaceAll('__ROOT__', root));
   };
   for (const d of ['home/.claude', 'projects/projA', 'projects/projB', 'projects/.code-conductor', 'cc/claude-plugin', 'managed', 'data']) {
-    await fs.mkdir(p(d), { recursive: true });
+    if (!(d in (spec.symlinks ?? {}))) await fs.mkdir(p(d), { recursive: true });
   }
   for (const [rel, content] of Object.entries(spec.files ?? {})) await write(rel, content);
   for (const [rel, target] of Object.entries(spec.symlinks ?? {})) {
@@ -47,8 +47,9 @@ export async function makeRoots(t, spec = {}) {
   return { root, p, write, env, config: (url) => loadConfig(env(url)), projects };
 }
 
-// Every file under `root` → { rel: sha-ish content + mtime }, for "nothing else changed" checks.
-export async function snapshotTree(root) {
+// Every file under `root` → { rel: mtime + content }, for "nothing else changed" checks.
+// `{ mtimes: false }` compares content and link targets only (e.g. after a copy).
+export async function snapshotTree(root, { mtimes = true } = {}) {
   const out = {};
   const walk = async (d) => {
     for (const ent of await fs.readdir(d, { withFileTypes: true })) {
@@ -58,7 +59,7 @@ export async function snapshotTree(root) {
       else if (ent.isDirectory()) { out[`${rel}/`] = 'dir'; await walk(abs); }
       else {
         const st = await fs.stat(abs);
-        out[rel] = `${st.mtimeMs}:${(await fs.readFile(abs)).toString('base64')}`;
+        out[rel] = `${mtimes ? st.mtimeMs : ''}:${(st.mode & 0o777).toString(8)}:${(await fs.readFile(abs)).toString('base64')}`;
       }
     }
   };

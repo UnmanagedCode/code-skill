@@ -3,8 +3,8 @@
 import { h, mount } from '../dom.js';
 import { api } from '../api.js';
 import { parseMarkdown, renderMarkdown } from '../markdown.js';
-import { costOf } from '../../shared/cost.js';
-import { validateSkillName } from '../../shared/names.js';
+import { costOf } from '../shared/cost.js';
+import { validateSkillName } from '../shared/names.js';
 import { num, tokens, SOURCE_LABELS } from '../format.js';
 import { notice, pickupNotice, gitNotice, projectWriteNotice, TOGGLE_NOTICE } from '../notices.js';
 import { scopeOf, usageMap } from './inventory.js';
@@ -142,7 +142,10 @@ function editableView(app, pane, d) {
   });
 
   const isOff = skill.override.effective === 'off';
-  const toggleBtn = h('button', { type: 'button', className: 'btn', disabled: skill.override.lockedByPolicy }, isOff ? 'Enable' : 'Disable');
+  const toggleBtn = h('button', {
+    type: 'button', className: 'btn', disabled: skill.override.lockedByPolicy || !skill.toggleable,
+    title: !skill.toggleable ? 'Frontmatter name ≠ folder name: fix the name to enable or disable it' : undefined,
+  }, isOff ? 'Enable' : 'Disable');
   toggleBtn.addEventListener('click', async () => {
     try {
       const res = await api('skills/enabled', { method: 'PUT', body: { ...target, enabled: isOff } });

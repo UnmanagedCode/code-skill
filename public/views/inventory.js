@@ -68,7 +68,14 @@ async function toggle(app, skill, enabled) {
   if (app.state.pane?.kind === 'skill' && app.state.pane.id === skill.id) app.renderPane();
 }
 
+const MISMATCH_TITLE = 'Frontmatter name ≠ folder name: fix the name to enable or disable it';
+
 function stateCell(app, skill) {
+  if (skill.writable && !skill.toggleable) {
+    return h('label', { className: 'switch', title: MISMATCH_TITLE },
+      h('input', { type: 'checkbox', role: 'switch', checked: skill.override.effective !== 'off', disabled: true, ariaLabel: `Enabled: ${skill.invokeName} (${MISMATCH_TITLE})` }),
+      h('span', {}, skill.override.effective));
+  }
   if (skill.toggleable) {
     const eff = skill.override.effective;
     const locked = skill.override.lockedByPolicy;
@@ -112,7 +119,11 @@ function skillTable(app) {
     h('tbody', {}, rows.map((s) => {
       const notes = markersFor(s, inv, byId);
       const u = uses?.get(s.invokeName);
-      return h('tr', { dataset: { id: s.id }, className: app.state.pane?.id === s.id ? 'selected' : '' },
+      // A click anywhere on the row opens the skill; the name button keeps it keyboard-reachable.
+      return h('tr', {
+        dataset: { id: s.id }, className: app.state.pane?.id === s.id ? 'skill-row selected' : 'skill-row',
+        onClick: (e) => { if (!e.target.closest('button, input, label, a')) app.openSkill(s.id); },
+      },
         h('td', {},
           h('button', { type: 'button', className: 'link', onClick: () => app.openSkill(s.id) }, s.invokeName),
           notes.length ? h('span', { className: 'marker', title: notes.join('\n'), ariaLabel: `${notes.length} note${notes.length > 1 ? 's' : ''}: ${notes.join('; ')}`, role: 'img' }, '⚠') : null),
