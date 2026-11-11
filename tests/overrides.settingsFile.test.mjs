@@ -85,3 +85,25 @@ test('a file that keeps changing → SETTINGS_BUSY, other writer wins, no temp f
   assert.deepEqual(JSON.parse(await fs.readFile(file, 'utf8')), { a: 1, n: 3 });
   assert.deepEqual((await fs.readdir(roots.p('home/.claude'))).filter((f) => f.endsWith('.tmp')), []);
 });
+
+// Invariant: a file that turns into a symlink between attempts is never replaced — the check runs before every read.
+test('settings file swapped for a symlink mid-write → retry refuses SYMLINK_REFUSED, link kept', async (t) => {
+  const roots = await makeRoots(t, { files: { 'home/.claude/settings.json': '{"a":1}\n', 'dotfiles/settings.json': '{"theirs":true}\n' } });
+  const file = roots.p('home/.claude/settings.json');
+  const beforeCommit = async (attempt) => {
+    if (attempt !== 0) return;
+    await fs.rm(file);
+    await fs.symlink(roots.p('dotfiles/settings.json'), file);
+  };
+  await assert.rejects(setSkillOverride(file, 'x', 'off', { hooks: { beforeCommit } }), { code: 'SYMLINK_REFUSED' });
+  assert.ok((await fs.lstat(file)).isSymbolicLink());
+  assert.equal(await fs.readFile(roots.p('dotfiles/settings.json'), 'utf8'), '{"theirs":true}\n');
+});
+
+// Invariant: an unparseable settings file's content never leaks into the refusal message.
+test('SETTINGS_UNPARSEABLE names the file only, never its content', async (t) => {
+  const { file } = await settings(t, '{"apiKey": "sk-SECRET-123456", oops}');
+  const err = await setSkillOverride(file, 'x', 'off').catch((e) => e);
+  assert.equal(err.code, 'SETTINGS_UNPARSEABLE');
+  assert.equal(err.message, `${file} is not valid JSON; fix it by hand first`);
+});

@@ -36,6 +36,21 @@ test('totals per owner equal the sum of their skills', async (t) => {
   assert.equal(s['cc-core:code-conductor:core'].override, null);
 });
 
+// Invariant: totals add up per owner even when two of its folders declare one name; the note names the single owner.
+test('two user folders declaring the same name: both count in the total; same-owner duplicate note', async (t) => {
+  const app = await boot(t, { files: {
+    'home/.claude/skills/a/SKILL.md': skillMd('shared', 'First folder'),
+    'home/.claude/skills/b/SKILL.md': skillMd('shared', 'Second folder, longer description'),
+    'home/.claude/skills/c/SKILL.md': skillMd('c', 'Other'),
+  } });
+  const { body: inv } = await app.json('GET', '/api/inventory');
+  const mine = inv.skills.filter((s) => s.source === 'user');
+  const total = inv.totals.find((x) => x.key === 'user:~');
+  assert.equal(total.count, 3);
+  assert.equal(total.chars, mine.reduce((a, s) => a + s.cost.chars, 0));
+  assert.deepEqual(inv.duplicates, [{ invokeName: 'shared', ids: ['user:~:a', 'user:~:b'], note: 'several folders of you (~/.claude/skills) declare this name' }]);
+});
+
 // Invariant: duplicates are flagged only when the two can meet in one session.
 test('user vs project same name → shadowed; two projects with one name → not a duplicate', async (t) => {
   const app = await boot(t, { files: FILES });

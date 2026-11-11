@@ -94,18 +94,20 @@ function inEverySession(r) {
 
 const ownerKeyOf = (r) => (r.source === 'convention' ? `convention:${r.namespace}` : r.id.slice(0, r.id.lastIndexOf(':')));
 
+// Per owner: every listed skill counts, except convention variants — a session
+// carries one variant of a convention skill, so its namespace counts the largest per name.
 function totalsOf(skills) {
   const groups = new Map();
   for (const r of skills) {
     const key = ownerKeyOf(r);
-    if (!groups.has(key)) groups.set(key, { key, label: r.source === 'convention' ? `convention ${r.namespace}` : r.owner.label, source: r.source, everySession: inEverySession(r), byName: new Map() });
-    // A session carries one variant of a convention skill: count the largest.
-    const g = groups.get(key);
-    g.byName.set(r.invokeName, Math.max(g.byName.get(r.invokeName) ?? 0, r.cost.chars));
+    if (!groups.has(key)) groups.set(key, { key, label: r.source === 'convention' ? `convention ${r.namespace}` : r.owner.label, source: r.source, everySession: inEverySession(r), entries: new Map() });
+    const entries = groups.get(key).entries;
+    const slot = r.source === 'convention' ? r.invokeName : r.id;
+    entries.set(slot, Math.max(entries.get(slot) ?? 0, r.cost.chars));
   }
-  return [...groups.values()].map(({ byName, ...g }) => {
-    const chars = [...byName.values()].reduce((a, b) => a + b, 0);
-    return { ...g, count: byName.size, chars, tokens: entryTokens(chars) };
+  return [...groups.values()].map(({ entries, ...g }) => {
+    const chars = [...entries.values()].reduce((a, b) => a + b, 0);
+    return { ...g, count: entries.size, chars, tokens: entryTokens(chars) };
   });
 }
 
@@ -128,7 +130,10 @@ function findDuplicates(skills) {
     const user = group.find((r) => r.source === 'user');
     const projects = group.filter((r) => r.source === 'project');
     const others = group.filter((r) => r.source !== 'project');
-    if (user && projects.length) {
+    const owners = new Set(group.map(ownerKeyOf));
+    if (owners.size === 1) {
+      out.push({ invokeName, ids, note: `several folders of ${group[0].owner.label} declare this name` });
+    } else if (user && projects.length) {
       for (const p of projects) p.warnings.push('shadowed by user skill');
       out.push({ invokeName, ids, note: 'user skill wins; project copy is shadowed' });
     } else if (others.length >= 2 || (others.length === 1 && projects.length)) {

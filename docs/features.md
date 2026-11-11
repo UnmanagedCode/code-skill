@@ -9,7 +9,7 @@ State lives in the URL: `?tab=usage|trash` (Inventory is the default) and `?skil
 ### Inventory
 
 - **Listing budget** — the listing that *every* session carries (user, claude.ai-synced, user/managed-scope installed plugins, cc core, cc plugins) against the budget for 200k and 1M contexts plus each distinct `contextWindowTokens` of live cc sessions (tagged "live session"). Budget = context tokens × 4 × 1% chars. Over budget, Claude Code shortens descriptions.
-- **Totals by owner** — skills, chars, ~tokens per owner, and which sessions list them (every session / sessions in a project / a convention namespace's sessions).
+- **Totals by owner** — skills, chars, ~tokens per owner (the sum of its listed skills; a convention namespace counts one variant per name), and which sessions list them (every session / sessions in a project / a convention namespace's sessions).
 - **Skills table** — click a row (or its name) to open the side pane. Columns: invoke name, source, owner, ~tokens, listing state (full / name only / not listed, `cut` when the text passes 1536 chars), uses, last used, state. ⚠ marks warnings, duplicate names and near-duplicates (hover for the notes). Filter box (name, description, owner) and source chips. With the side pane open, owner, listing and last-used columns hide.
 - **State column** — a switch for user and project skills (disabled, with a tooltip, when the frontmatter `name` differs from the folder name); "read-only" (hover: owner) for everything else; "plugin enabled/disabled" for installed Claude Code plugins. A policy-locked skill's switch is disabled.
 - **Source errors** — a source that fails to load shows a banner; the rest still lists.

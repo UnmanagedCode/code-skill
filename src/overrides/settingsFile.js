@@ -27,8 +27,9 @@ export async function readSettingsObject(file) {
   let obj;
   try {
     obj = JSON.parse(text);
-  } catch (e) {
-    refuse('SETTINGS_UNPARSEABLE', 409, `${file} is not valid JSON (${e.message}); fix it by hand first`);
+  } catch {
+    // A fixed message: the parser's own echoes file content, which may hold secrets.
+    refuse('SETTINGS_UNPARSEABLE', 409, `${file} is not valid JSON; fix it by hand first`);
   }
   if (!isPlainObject(obj)) refuse('SETTINGS_SHAPE', 409, `${file} is not a JSON object`);
   if (obj.skillOverrides !== undefined && !isPlainObject(obj.skillOverrides)) refuse('SETTINGS_SHAPE', 409, `${file}: skillOverrides is not an object`);
@@ -58,10 +59,6 @@ export async function setSkillOverride(file, name, value, { containRoot, hooks =
     if (e.code === 'EEXIST' || e.code === 'ENOTDIR' || e.code === 'ENOENT') refuse('SETTINGS_SHAPE', 409, `${dir} is not a usable folder (a file or a dangling symlink)`);
     throw e;
   }
-  // The file itself must not be a symlink: the atomic write renames a new file over the path, which would replace the link.
-  if ((await lstatOrNull(file))?.isSymbolicLink()) {
-    refuse('SYMLINK_REFUSED', 409, `${file} is a symlink (for example into a dotfiles repo). Code Skill writes settings by atomically replacing the file, which would replace your link with a plain file, so it won't. ${value === undefined ? `Remove "${name}" from "skillOverrides"` : `Set "skillOverrides": {"${name}": "${value}"}`} in the file the link points to, by hand.`);
-  }
   if (containRoot) {
     const rel = path.relative(await fs.realpath(containRoot), await fs.realpath(dir));
     if (rel.startsWith('..') || path.isAbsolute(rel)) refuse('PATH_ESCAPE', 400, `${dir} resolves outside ${containRoot}`);
@@ -69,6 +66,11 @@ export async function setSkillOverride(file, name, value, { containRoot, hooks =
 
   for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt++) {
     const before = await lstatOrNull(file);
+    // Checked on every attempt: the file may have become a symlink since the last one.
+    // The atomic write renames a new file over the path, which would replace the link.
+    if (before?.isSymbolicLink()) {
+      refuse('SYMLINK_REFUSED', 409, `${file} is a symlink (for example into a dotfiles repo). Code Skill writes settings by atomically replacing the file, which would replace your link with a plain file, so it won't. ${value === undefined ? `Remove "${name}" from "skillOverrides"` : `Set "skillOverrides": {"${name}": "${value}"}`} in the file the link points to, by hand.`);
+    }
     const { exists, obj, text } = await readSettingsObject(file);
     const current = obj.skillOverrides?.[name];
     if (current === value) return { changed: false };

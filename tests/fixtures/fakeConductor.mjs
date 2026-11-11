@@ -1,11 +1,13 @@
 // A fake cc REST server: /api/projects, /api/plugins, /api/projects/:n/worktrees, /api/instances.
-// `state` is live: tests mutate it between requests. `state.fail[route] = status` makes a route fail.
+// `state` is live: tests mutate it between requests. `state.fail[route] = status` makes a route fail;
+// `state.onRequest(pathname)` (async) runs before each answer, e.g. to act inside a server-side window.
 import http from 'node:http';
 
 export async function startFakeConductor(t, state = {}) {
   const s = { projects: [], plugins: [], worktrees: {}, instances: [], fail: {}, ...state };
-  const server = http.createServer((req, res) => {
+  const server = http.createServer(async (req, res) => {
     const url = new URL(req.url, 'http://x');
+    if (s.onRequest) await s.onRequest(url.pathname);
     const send = (status, body) => {
       res.writeHead(status, { 'content-type': 'application/json' });
       res.end(JSON.stringify(body));

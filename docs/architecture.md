@@ -51,7 +51,7 @@ The inventory is computed per request (no cache). A thrown source error becomes 
 - **host-plugin** — `<claudeDir>/plugins/installed_plugins.json` (`version: 2`). Namespace = `<installPath>/.claude-plugin/plugin.json` `name`, else the key before `@`. `enabled` = `enabledPlugins[key] === true` in user settings (user/managed scope) or the entry's project `settings.json` / `settings.local.json` (project / local scope).
 - **cc-core** — `<coreDir>/skills`, namespace from its plugin.json.
 - **cc-plugin** — `/api/plugins` rows with `enabled && system === 'local' && errors.length === 0`; checkout = the project's path, or the `/worktrees` row matching `activeVersion.name`; root = `claudePlugin` from its `conductor.plugin.json`, which must stay inside the checkout; skipped (with a source error) without `.claude-plugin/plugin.json`.
-- Every source reads its SKILL.md files through `readAll`, which reports an unreadable one as a source error and skips just it.
+- Every source skips just an unreadable `SKILL.md` and reports it as a source error; the rest of the source still lists.
 - **convention** — `<storeDir>/convention-skills/*/*/` with a plugin.json (a broken one skips just that namespace); merged by (invokeName, sha256); sessions labelled from `/api/instances` (`displayLabel`, else `title`), else "(no instance row)".
 
 ## Override layers
@@ -68,14 +68,16 @@ Read fresh per request (`readLayers`), merged later-wins: user `<claudeDir>/sett
 
 ## Trash
 
-`<dataDir>/trash/<trashId>/skill/` (the moved folder) and `meta.json` (`TrashMeta`). `trashId` = `<epochMs>-<8 hex>`. `inspectEntry` checks an entry before listing or restoring it: entry and `skill/` are real directories (no symlinks) whose real paths lie inside the real trash folder, `meta.json` is a regular file holding an object with `name` and `scope`; a symlink → `SYMLINK_REFUSED`, anything else malformed → `NOT_FOUND`, and the listing skips it. Moves use `rename`, falling back on `EXDEV` to recursive copy (symlinks verbatim) then remove. Restore re-runs every containment check for the original scope/project/name. The `skillOverrides` key is left as it was on delete.
+`<dataDir>/trash/<trashId>/skill/` (the moved folder) and `meta.json` (`TrashMeta`). `trashId` = `<epochMs>-<8 hex>`. `inspectEntry` checks an entry before listing or restoring it: entry and `skill/` are real directories (no symlinks) whose real paths lie inside the real trash folder, `meta.json` is a regular file holding an object with `name` and `scope`; a symlink → `SYMLINK_REFUSED`, anything else malformed → `NOT_FOUND`, and the listing skips it. It also requires a valid, non-reserved `name`, a writable `scope` and, for project scope, a `project`, so the listing shows only entries that could restore.
+- Restore re-checks the entry inside `takeFromTrash`, immediately before the move (entry a real directory, `skill/` not a symlink, `realpath(skill/)` inside the real trash folder): restore resolves its target in between, which for project scope calls cc.
+- **Accepted limitation:** a gap of one syscall remains between that final check and the `rename`. Node exposes no `renameat`/`O_NOFOLLOW` to close it. Exploiting it needs write access to the plugin's private data dir at the right instant. Moves use `rename`, falling back on `EXDEV` to recursive copy (symlinks verbatim) then remove. Restore re-runs every containment check for the original scope/project/name. The `skillOverrides` key is left as it was on delete.
 
 ## Write safety
 
 - **Names** — `validateSkillName` (`shared/names.js`): `NAME_RE`, minus `RESERVED_NAMES`.
 - **Projects** — must be a `/api/projects` row with that exact name and `system === 'local'`.
 - **Containment** (`resolveSkillTarget`) — base = `<claudeDir>/skills` or `<project>/.claude/skills`; a symlinked `<project>/.claude` is refused; `realpath(base)` must be inside `realpath(owner root)`; the skill folder must be a real directory directly under it; `SKILL.md` a regular file.
-- **Settings** (`setSkillOverride`) — reads follow symlinks; a write refuses a settings *file* that is a symlink (`SYMLINK_REFUSED`, the rename would replace the link) but accepts a symlinked folder whose real path is inside the owner root; parse failure / non-object → refuse with the file untouched; only `skillOverrides[name]` changes; indent detected and kept; the read-modify-write re-checks the file's stat just before rename and retries up to 3 times, then `SETTINGS_BUSY`.
+- **Settings** (`setSkillOverride`) — reads follow symlinks; a write refuses a settings *file* that is a symlink (`SYMLINK_REFUSED`, the rename would replace the link; checked before every read-modify-write attempt) but accepts a symlinked folder whose real path is inside the owner root; parse failure / non-object → refuse with the file untouched (the `SETTINGS_UNPARSEABLE` message never quotes file content); only `skillOverrides[name]` changes; indent detected and kept; the read-modify-write re-checks the file's stat just before rename and retries up to 3 times, then `SETTINGS_BUSY`.
 - **Atomic writes** — temp file `.<base>.<rand>.tmp` (exclusive create, the existing file's mode), fsync, rename; temp removed on failure.
 - **Create order** — scope, name, body and description are checked before `resolveSkillTarget` makes the skills folder; a dangling or non-folder skills path is `SKILLS_DIR_UNUSABLE`.
 - **Edits** — `baseEtag` must match the current bytes (`STALE`); frontmatter is written verbatim (`composeSkillMd`).

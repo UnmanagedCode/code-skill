@@ -3,6 +3,8 @@ import path from 'node:path';
 import crypto from 'node:crypto';
 import { writeFileAtomic } from './fsx/atomicWrite.js';
 import { refuse } from './safety/errors.js';
+import { validateSkillName } from '../shared/names.js';
+import { WRITABLE_SCOPES } from './safety/resolve.js';
 
 // Deleted skills, kept under <dataDir>/trash/<trashId>/{skill/, meta.json}.
 export const TRASH_ID_RE = /^\d+-[0-9a-f]{8}$/;
@@ -69,7 +71,9 @@ export async function inspectEntry(config, trashId) {
   } catch {
     refuse('NOT_FOUND', 404, `trash entry ${trashId} has an unreadable meta.json`);
   }
-  if (meta === null || typeof meta !== 'object' || Array.isArray(meta) || typeof meta.name !== 'string' || typeof meta.scope !== 'string') {
+  // Only entries that could ever restore: a valid name, a writable scope, a project name for project scope.
+  if (meta === null || typeof meta !== 'object' || Array.isArray(meta) || !validateSkillName(meta.name).ok
+    || !WRITABLE_SCOPES.includes(meta.scope) || (meta.scope === 'project' && (typeof meta.project !== 'string' || !meta.project))) {
     refuse('NOT_FOUND', 404, `trash entry ${trashId} has a malformed meta.json`);
   }
   return { meta: { ...meta, trashId }, entry, skillDir };
@@ -96,7 +100,17 @@ export async function listTrash(config) {
 }
 
 // Moves an inspected entry's skill folder to `dst`, then drops the entry.
-export async function takeFromTrash({ entry, skillDir }, dst, ops = {}) {
+// The entry is re-checked immediately before the move: time passes between
+// inspectEntry and here (restore resolves the target, which may call cc), and
+// the entry or its skill/ could have been swapped for a symlink meanwhile.
+export async function takeFromTrash(config, { entry, skillDir }, dst, ops = {}) {
+  const changed = () => refuse('SYMLINK_REFUSED', 400, 'the trash entry changed while it was being restored; refusing to move it');
+  const root = await fs.realpath(trashRoot(config));
+  const entryStat = await lstatOrNull(entry);
+  if (!entryStat || entryStat.isSymbolicLink() || !entryStat.isDirectory()) changed();
+  const skillStat = await lstatOrNull(skillDir);
+  if (!skillStat || skillStat.isSymbolicLink() || !skillStat.isDirectory()) changed();
+  if (!inside(root, await fs.realpath(skillDir))) changed();
   await moveDir(skillDir, dst, ops);
   await fs.rm(entry, { recursive: true, force: true });
 }

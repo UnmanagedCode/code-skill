@@ -105,6 +105,6 @@ export async function restoreSkill(deps, trashId) {
   assertWritableScope(meta.scope);
   const t = await resolveSkillTarget({ scope: meta.scope, project: meta.project, name: meta.name }, deps, { create: true });
   if (t.exists) refuse('RESTORE_CONFLICT', 409, `a skill named "${meta.name}" exists there now; rename or delete it first`);
-  await takeFromTrash(inspected, t.dir);
+  await takeFromTrash(deps.config, inspected, t.dir);
   return { id: skillId(meta.scope, meta.project, meta.name), git: await projectGit(deps, t, t.dir) };
 }

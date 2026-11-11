@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { promises as fs } from 'node:fs';
 import { boot } from './helpers.mjs';
 import { makeRoots, skillMd, snapshotTree } from './fixtures/roots.mjs';
-import { moveToTrash } from '../src/trash.js';
+import { moveToTrash, inspectEntry, takeFromTrash } from '../src/trash.js';
 
 const FILES = {
   'home/.claude/skills/gone/SKILL.md': skillMd('gone', 'Going'),
@@ -107,4 +107,59 @@ test('meta.json a folder, bad JSON, wrong shape, or no skill/ → 404 NOT_FOUND'
     { 'data/trash/1-dddddddd/meta.json': '[1]', 'data/trash/1-dddddddd/skill/SKILL.md': 'x' },
     { 'data/trash/1-dddddddd/meta.json': META('1-dddddddd') },
   ]) await restoreRefused(t, { files }, '1-dddddddd', 'NOT_FOUND');
+});
+
+// Invariant: restore re-checks the entry right before moving it, so swapping it for a symlink while the
+// target is being resolved (restore asks cc about the project) can't move a folder from outside the trash.
+test('entry swapped for a symlink during restore → refused, the outside folder untouched', async (t) => {
+  const app = await boot(t, { files: {
+    'projects/projA/.claude/skills/p/SKILL.md': skillMd('p', 'mine'),
+    'outside/fake/skill/SKILL.md': skillMd('p', 'not yours'),
+    'outside/fake/skill/secret.txt': 'secret',
+  } });
+  const { trashId } = (await app.json('POST', '/api/skills/delete', { scope: 'project', project: 'projA', name: 'p' })).body;
+  const entry = app.roots.p('data/trash', trashId);
+  await fs.writeFile(app.roots.p('outside/fake/meta.json'), JSON.stringify({ trashId, scope: 'project', project: 'projA', name: 'p', originalPath: '/x', deletedAt: 'x' }));
+  const before = await snapshotTree(app.roots.p('outside'));
+  let swapped = false;
+  app.fake.state.onRequest = async (pathname) => {
+    // restoreSkill's own project lookup happens after inspectEntry: swap the entry then.
+    if (pathname !== '/api/projects' || swapped) return;
+    swapped = true;
+    await fs.rename(entry, `${entry}.aside`);
+    await fs.symlink(app.roots.p('outside/fake'), entry);
+  };
+  const res = await app.json('POST', `/api/trash/${trashId}/restore`);
+  assert.ok(swapped, 'the swap ran inside the window');
+  assert.equal(res.body.code, 'SYMLINK_REFUSED', JSON.stringify(res.body));
+  assert.deepEqual(await snapshotTree(app.roots.p('outside')), before, 'the outside folder is untouched');
+  await assert.rejects(fs.access(app.roots.p('projects/projA/.claude/skills/p')));
+});
+
+test('skill/ swapped for a symlink after inspection → takeFromTrash refuses', async (t) => {
+  const roots = await makeRoots(t, { files: { ...FILES, 'outside/victim/SKILL.md': 'v' } });
+  const config = roots.config('http://127.0.0.1:1');
+  const trashId = await moveToTrash(config, { scope: 'user', name: 'gone', dir: roots.p('home/.claude/skills/gone') });
+  const inspected = await inspectEntry(config, trashId);
+  await fs.rename(inspected.skillDir, `${inspected.skillDir}.aside`);
+  await fs.symlink(roots.p('outside/victim'), inspected.skillDir);
+  await assert.rejects(takeFromTrash(config, inspected, roots.p('home/.claude/skills/gone')), { code: 'SYMLINK_REFUSED' });
+  await fs.access(roots.p('outside/victim/SKILL.md'));
+  await assert.rejects(fs.access(roots.p('home/.claude/skills/gone')));
+});
+
+// Invariant: the trash lists only entries that could restore; a bad name or a read-only scope is skipped (and 404s).
+test('entries with an invalid name, a reserved name or a read-only scope are not listed', async (t) => {
+  const entry = (id, meta) => ({ [`data/trash/${id}/meta.json`]: { trashId: id, originalPath: '/x', deletedAt: '2026-11-01T00:00:00.000Z', ...meta }, [`data/trash/${id}/skill/SKILL.md`]: 'x' });
+  const app = await boot(t, { files: {
+    ...entry('1-00000001', { scope: 'user', project: null, name: '../escape' }),
+    ...entry('1-00000002', { scope: 'user', project: null, name: 'synced' }),
+    ...entry('1-00000003', { scope: 'cc-core', project: null, name: 'core' }),
+    ...entry('1-00000004', { scope: 'project', project: null, name: 'p' }),
+    ...entry('1-00000005', { scope: 'user', project: null, name: 'fine' }),
+  } });
+  assert.deepEqual((await app.json('GET', '/api/trash')).body.entries.map((e) => e.trashId), ['1-00000005']);
+  for (const id of ['1-00000001', '1-00000002', '1-00000003', '1-00000004']) {
+    assert.equal((await app.json('POST', `/api/trash/${id}/restore`)).body.code, 'NOT_FOUND', id);
+  }
 });

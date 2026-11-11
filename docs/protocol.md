@@ -14,10 +14,10 @@ All routes are under `/api`, JSON in and out. Refusals answer `{ ok: false, code
 | POST `skills/validate` | `{dirName, frontmatterText, body}` | `{ok, errors[], description, whenToUse, cost}` | 400 `BAD_REQUEST` |
 | POST `skills` | `{scope, project?, name, description, body}` | 201 `{id, etag, git, skill}` | 400 `INVALID_NAME`, `RESERVED_NAME`, `INVALID_FRONTMATTER`, `PATH_ESCAPE`, `SYMLINK_REFUSED`, `PROJECT_NOT_LOCAL`, `BAD_REQUEST`; 404 `UNKNOWN_PROJECT`; 409 `EXISTS`, `SKILLS_DIR_UNUSABLE` (the skills folder is a dangling symlink or a file). Input checks run before any folder is made. |
 | PUT `skills/content` | `{scope, project?, name, frontmatterText, body, baseEtag}` | `{id, etag, git, skill}` | as above, plus 404 `NOT_FOUND`, 409 `STALE`; `INVALID_FRONTMATTER` carries `errors[]` |
-| PUT `skills/enabled` | `{scope, project?, name, enabled}` (`name` = folder name) | `{override, git}` | 409 `POLICY_LOCKED`, `NAME_MISMATCH` (frontmatter `name` ≠ folder), `SETTINGS_UNPARSEABLE`, `SETTINGS_SHAPE`, `SETTINGS_BUSY`, `SYMLINK_REFUSED` (the settings file is a symlink; the message says what to edit by hand); 400 `PATH_ESCAPE`, `BAD_REQUEST`; 404 `NOT_FOUND` |
-| POST `skills/delete` | `{scope, project?, name}` | `{trashId, git}` | 404 `NOT_FOUND`; 400 `PATH_ESCAPE`, `SYMLINK_REFUSED` |
-| GET `trash` | – | `{entries: TrashMeta[]}` newest first | – |
-| POST `trash/:trashId/restore` | – (`trashId` must match `^\d+-[0-9a-f]{8}$`) | `{id, git, skill}` | 404 `NOT_FOUND` (unknown or malformed entry); 400 `SYMLINK_REFUSED` (a symlink in the entry); 409 `RESTORE_CONFLICT`, `SKILLS_DIR_UNUSABLE`; 404 `UNKNOWN_PROJECT`; 400 `PROJECT_NOT_LOCAL`, `PATH_ESCAPE`, `SYMLINK_REFUSED`, `INVALID_NAME`; 403 `READ_ONLY_SOURCE` |
+| PUT `skills/enabled` | `{scope, project?, name, enabled}` (`name` = folder name) | `{override, git}` | 409 `POLICY_LOCKED`, `NAME_MISMATCH` (frontmatter `name` ≠ folder), `SETTINGS_UNPARSEABLE` (message names the file only), `SETTINGS_SHAPE`, `SETTINGS_BUSY`, `SYMLINK_REFUSED` (the settings file is a symlink; the message says what to edit by hand); 400 `SYMLINK_REFUSED` (the skill folder or its `SKILL.md` is a symlink), `INVALID_NAME`, `RESERVED_NAME`, `PATH_ESCAPE`, `PROJECT_NOT_LOCAL`, `BAD_REQUEST`; 404 `NOT_FOUND`, `UNKNOWN_PROJECT` |
+| POST `skills/delete` | `{scope, project?, name}` | `{trashId, git}` | 404 `NOT_FOUND`, `UNKNOWN_PROJECT`; 400 `SYMLINK_REFUSED` (the skill folder or its `SKILL.md` is a symlink), `INVALID_NAME`, `RESERVED_NAME`, `PATH_ESCAPE`, `PROJECT_NOT_LOCAL` |
+| GET `trash` | – | `{entries: TrashMeta[]}` newest first; entries that could never restore are left out | – |
+| POST `trash/:trashId/restore` | – (`trashId` must match `^\d+-[0-9a-f]{8}$`) | `{id, git, skill}` | 404 `NOT_FOUND` (unknown entry, or one that can't restore: malformed, an invalid or reserved name, a read-only scope); 400 `SYMLINK_REFUSED` (a symlink in the entry, or the entry changed during the restore); 409 `RESTORE_CONFLICT`, `SKILLS_DIR_UNUSABLE`; 404 `UNKNOWN_PROJECT`; 400 `PROJECT_NOT_LOCAL`, `PATH_ESCAPE`, `SYMLINK_REFUSED` (target side) |
 | GET `usage` | – | `UsageResponse` (concurrent calls share one scan) | – |
 
 Any route: body > 256 KiB → 413 `BODY_TOO_LARGE`; malformed JSON → 400 `BAD_JSON`; unknown `/api` route → 404 `NOT_FOUND`; unexpected failure → 500 `INTERNAL` (logged).
@@ -82,7 +82,9 @@ type GitReport = {
 type TrashMeta = { trashId: string; scope: 'user'|'project'; project: string | null; name: string; originalPath: string; deletedAt: string };
 ```
 
-Duplicate notes: `user skill wins; project copy is shadowed`, `same invoke name from several sources`, `differs between sessions` (convention variants).
+Duplicate notes: `several folders of <owner label> declare this name` (one owner), `user skill wins; project copy is shadowed`, `same invoke name from several sources`, `differs between sessions` (convention variants).
+
+Totals: each owner's `count`/`chars` sum every listed skill it owns; only a convention namespace counts one (the largest) variant per invoke name.
 
 ## Static files
 
