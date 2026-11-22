@@ -89,6 +89,7 @@ Read fresh per request (`readLayers`), merged later-wins: user `<claudeDir>/sett
 - Only `public/dom.js` creates nodes: `h(tag, props, ...children)`; props from an allowlist, handlers only as functions, strings only as text nodes.
 - `public/markdown.js` is the only place an `href` is set, through `safeHref` (http, https, mailto). Its inline parser scans forward with `indexOf` and remembers failed delimiter searches, so it stays near-linear on hostile input; nesting deeper than `MAX_DEPTH` renders as text.
 - Module specifiers are relative and must stay under the plugin prefix when embedded (`tests/frontendImports.test.mjs` resolves each against `/plugins/code-skill/`).
+- `public/index.html` loads cc's two host files with relative links (`../../pluginBridge.js`, `../../pluginTheme.css`), never root-absolute ones; cc serves the page under an optional URL prefix. `tests/frontendTheme.test.mjs` resolves them under that prefix.
 - `public/api.js` is the only `fetch` call site and refuses root-relative paths.
 - `tests/frontendSafety.test.mjs` bans HTML sinks, `eval`, `setAttribute`, inline style, location assignment and stray `fetch`/`href` across `public/` and `shared/`; each rule carries a sample it must flag.
 
