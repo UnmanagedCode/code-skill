@@ -10,11 +10,21 @@ const manifest = JSON.parse(read('conductor.plugin.json'));
 
 // Invariant: the host contract's head order — bridge first, fallback under the host sheet, theme-init after both.
 test('index.html head order: bridge → fallback → pluginTheme → theme-init → styles → app', () => {
-  const order = ['src="/pluginBridge.js"', 'href="theme-fallback.css"', 'href="/pluginTheme.css"', 'src="theme-init.js"', 'href="styles.css"', 'src="app.js"'].map((s) => html.indexOf(s));
+  const order = ['src="../../pluginBridge.js"', 'href="theme-fallback.css"', 'href="../../pluginTheme.css"', 'src="theme-init.js"', 'href="styles.css"', 'src="app.js"'].map((s) => html.indexOf(s));
   assert.ok(order.every((i) => i > 0), JSON.stringify(order));
   assert.deepEqual([...order].sort((a, b) => a - b), order);
-  assert.ok(html.indexOf('<script') === html.indexOf('<script src="/pluginBridge.js"'), 'the bridge is the first script');
-  assert.doesNotMatch(html, /src="\/(?!pluginBridge)|href="\/(?!pluginTheme)/, 'only the two host URLs are root-relative');
+  assert.ok(html.indexOf('<script') === html.indexOf('<script src="../../pluginBridge.js"'), 'the bridge is the first script');
+  assert.doesNotMatch(html, /(?:src|href)="\//, 'no root-absolute src or href: links must resolve under the URL prefix');
+});
+
+// Invariant: cc serves the page at /plugins/<id>/ under an optional URL prefix; the two host files must resolve to cc's root under any of them.
+test('the two cc host links resolve to cc\'s root under any URL prefix', () => {
+  const hostLinks = [...html.matchAll(/(?:src|href)="([^"]*plugin(?:Bridge\.js|Theme\.css))"/g)].map((m) => m[1]);
+  assert.equal(hostLinks.length, 2, JSON.stringify(hostLinks));
+  for (const prefix of ['', '/p/q']) {
+    const page = new URL(`http://h${prefix}/plugins/code-skill/`);
+    assert.deepEqual(hostLinks.map((link) => new URL(link, page).pathname), [`${prefix}/pluginBridge.js`, `${prefix}/pluginTheme.css`]);
+  }
 });
 
 // Invariant: colours come only from the host's tokens, so the page follows cc's theme.

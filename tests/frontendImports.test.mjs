@@ -48,10 +48,10 @@ test('every import in public/ and shared/ resolves inside the embedded prefix to
       if (r.startsWith(BASE)) targets.add(r); else problems.push(r);
     }
   }
-  // index.html's own relative assets (the two host URLs are cc's, not ours).
+  // index.html's own relative assets; cc's two host files are checked against cc's root by frontendTheme.test.mjs.
   const html = await fs.readFile(path.join(REPO, 'public/index.html'), 'utf8');
   for (const m of html.matchAll(/(?:src|href)="([^"]+)"/g)) {
-    if (/^\/plugin(Bridge\.js|Theme\.css)$/.test(m[1])) continue;
+    if (/^\.\.\/\.\.\/plugin(Bridge\.js|Theme\.css)$/.test(m[1])) continue;
     const r = resolveEmbedded('public/index.html', m[1].startsWith('.') ? m[1] : `./${m[1]}`);
     if (m[1].startsWith('/')) problems.push(`root-relative URL ${m[1]} in index.html`);
     else if (r.startsWith(BASE)) targets.add(r); else problems.push(r);
